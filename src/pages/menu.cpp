@@ -9,13 +9,20 @@
 
 MenuPage& menuPage = MenuPage::Get();
 MenuPage::MenuPage()
-: IPage<MenuPage>(ePageID::Menu, "Window.MenuPage", true)
+    : IPage<MenuPage>(ePageID::Menu, "Settings", true)
 {
-    Events::initGameEvent += [this]()
+    // This needs to run before initRwEvent
+    // Updates are checked in m_bAutoCheckUpdate
+    Events::initRwEvent.before += [this]()
     {
         m_bDiscordRPC = gConfig.Get("Menu.DiscordRPC", false);
         m_bAutoCheckUpdate = gConfig.Get("Menu.AutoCheckUpdate", true);
         m_bTextOnlyMode = gConfig.Get("Menu.TextOnlyMode", false);
+
+        m_fAccentColor[0] = gConfig.Get("Menu.AccentColor.Red", 0.0392f);
+        m_fAccentColor[1] = gConfig.Get("Menu.AccentColor.Green", 0.2784f);
+        m_fAccentColor[2] = gConfig.Get("Menu.AccentColor.Blue", 0.6078f);
+        CheatMenu.UpdateAccentColor(m_fAccentColor);
     };
 
     if (m_bDiscordRPC)
@@ -28,72 +35,59 @@ void MenuPage::Draw()
 {
     if (ImGui::BeginTabBar("Menu", ImGuiTabBarFlags_NoTooltip + ImGuiTabBarFlags_FittingPolicyScroll))
     {
-        if (ImGui::BeginTabItem(TEXT("Menu.Config")))
+        if (ImGui::BeginTabItem(TEXT( "Menu.Config")))
         {
             static int selected = Locale::GetCurrentLocaleIndex();
             static std::vector<std::string>& vec = Locale::GetLocaleList();
 
-
-            /*
-                Chinese fonts is huge & adds overhead
-                Only download & use it if the user asks for it
-            */
-            if (Locale::GetLocaleList()[Locale::GetCurrentLocaleIndex()] == "Chinese" 
-            && !FontMgr::IsSupportPackageInstalled())
-            {
-                ImGui::Spacing();
-                ImGui::TextWrapped("Font support package is required to display this language!"
-" This may take a while depending on your internet connection.\n\nIt's recommended NOT to install unless you want to use this language! (Affects game loading time)");
-                ImGui::Spacing();
-                if (ImGui::Button("Install package", ImVec2(Widget::CalcSize(2))))
-                {
-                    FontMgr::StartOptionalFontDownload();
-                }
-                ImGui::SameLine();
-                if (ImGui::Button("Switch to English", ImVec2(Widget::CalcSize(2))))
-                {
-                    Locale::SetDefaultLocale();
-                    selected = Locale::GetCurrentLocaleIndex();
-                    // CheatMenu::GenHeaderList();
-                }
-            }
-
             ImGui::Spacing();
-            if (ImGui::Button(TEXT("Menu.ResetSize"), ImVec2(Widget::CalcSize(2))))
+            if (ImGui::Button(TEXT("Menu.ResetSize"), ImVec2(Widget::CalcSize(1))))
             {
-                CheatMenu.ResetSize();
+                CheatMenu.ResetParams();
             }
-            ImGui::SameLine();
-            if (ImGui::Button(TEXT("Menu.ReloadFonts"), ImVec2(Widget::CalcSize(2))))
-            {
-                FontMgr::SetFontReloadRequired(true);
-            }
+            // ImGui::SameLine();
+            // if (ImGui::Button(TEXT("Menu.ReloadFonts"), ImVec2(Widget::CalcSize(2))))
+            // {
+            //     FontMgr::SetFontReloadRequired(true);
+            // }
 
             ImGui::Spacing();
 
             if (vec.size() > 0)
             {
+                ImGui::PushItemWidth(ImGui::GetWindowContentRegionWidth() / 3);
                 if (Widget::ListBox(TEXT("Menu.Language"), vec, selected))
                 {
                     if (Locale::SetLocale(selected) == Locale::eReturnCodes::SUCCESS)
                     {
-                        // CheatMenu::GenHeaderList();
+                        std::string label = vec[selected];
+                        gConfig.Set("Menu.Language", label);
                     }
                     else
                     {
                         Util::SetMessage(TEXT("Menu.LanguageChangeFailed"));
                     }
                 }
+
+                if (ImGui::ColorEdit3(TEXT("Menu.SelectAccentColor"), m_fAccentColor))
+                {
+                    gConfig.Set("Menu.AccentColor.Red", m_fAccentColor[0]);
+                    gConfig.Set("Menu.AccentColor.Green", m_fAccentColor[1]);
+                    gConfig.Set("Menu.AccentColor.Blue", m_fAccentColor[2]);
+                    CheatMenu.UpdateAccentColor(m_fAccentColor);
+                }
+
+                ImGui::PopItemWidth();
             }
 
-            ImGui::Spacing();
+            ImGui::Dummy(ImVec2(0, 20));
 
             ImGui::Columns(2, NULL, false);
-            if (ImGui::Checkbox(TEXT("Menu.AutoCheckUpdate"), &m_bAutoCheckUpdate))
+            if (Widget::Toggle(TEXT("Menu.AutoCheckUpdate"), &m_bAutoCheckUpdate))
             {
                 gConfig.Set("Menu.AutoCheckUpdate", m_bAutoCheckUpdate);
             }
-            if (ImGui::Checkbox(TEXT("Menu.DiscordRPC"), &m_bDiscordRPC))
+            if (Widget::Toggle(TEXT("Menu.DiscordRPC"), &m_bDiscordRPC))
             {
                 if (m_bDiscordRPC)
                 {
@@ -108,21 +102,21 @@ void MenuPage::Draw()
             ImGui::NextColumn();
 
             if (gRenderer == eRenderer::DirectX9
-            && Widget::Checkbox(TEXT("Menu.TextOnlyMode"), &m_bTextOnlyMode, TEXT("Menu.TextOnlyModeHint")))
+                    && Widget::Toggle(TEXT("Menu.TextOnlyMode"), &m_bTextOnlyMode, TEXT("Menu.TextOnlyModeHint")))
             {
                 gConfig.Set("Menu.TextOnlyMode", m_bTextOnlyMode);
             }
             ImGui::Columns(1);
-            
+
             ImGui::EndTabItem();
         }
-        if (ImGui::BeginTabItem(TEXT("Menu.Overlay")))
+        if (ImGui::BeginTabItem(TEXT( "Menu.Overlay")))
         {
             ImGui::Spacing();
             ImGui::Spacing();
             ImGui::SameLine();
-            if (ImGui::Combo(TEXT("Menu.Position"), reinterpret_cast<int*>(&Overlay::m_nSelectedPos), 
-                "Custom\0Top left\0Top right\0Bottom left\0Bottom right\0"))
+            if (ImGui::Combo(TEXT("Menu.Position"), reinterpret_cast<int*>(&Overlay::m_nSelectedPos),
+                             "Custom\0Top left\0Top right\0Bottom left\0Bottom right\0"))
             {
                 gConfig.Set<int>("Overlay.SelectedPosition", static_cast<int>(Overlay::m_nSelectedPos));
             }
@@ -137,57 +131,64 @@ void MenuPage::Draw()
                 gConfig.Set("Overlay.TextColor.Alpha", Overlay::m_fTextCol[3]);
             }
 
-            ImGui::Spacing();
+            ImGui::Dummy(ImVec2(0, 20));
 
             ImGui::Columns(2, nullptr, false);
-            if (ImGui::Checkbox(TEXT("Menu.NoBG"), &Overlay::m_bTransparent))
+            if (Widget::Toggle(TEXT("Menu.NoBG"), &Overlay::m_bTransparent))
             {
                 gConfig.Set("Overlay.Transparent", Overlay::m_bTransparent);
             }
 
-            if (ImGui::Checkbox(TEXT("Menu.ShowCoords"), &Overlay::m_bCoord))
+            if (Widget::Toggle(TEXT("Menu.ShowCoords"), &Overlay::m_bCoord))
             {
                 gConfig.Set("Overlay.ShowCoordinates", Overlay::m_bCoord);
             }
 
-            if (ImGui::Checkbox(TEXT("Menu.ShowCPU"), &Overlay::m_bCpuUsage))
+            if (Widget::Toggle(TEXT("Menu.ShowCPU"), &Overlay::m_bCpuUsage))
             {
                 gConfig.Set("Overlay.ShowCPUUsage", Overlay::m_bCpuUsage);
             }
 
-            if (ImGui::Checkbox(TEXT("Menu.ShowFPS"), &Overlay::m_bFPS))
+            if (Widget::Toggle(TEXT("Menu.ShowFPS"), &Overlay::m_bFPS))
             {
                 gConfig.Set("Overlay.ShowFPS", Overlay::m_bFPS);
             }
 
-            if (ImGui::Checkbox(TEXT("Menu.ShowLocation"), &Overlay::m_bLocName))
+            if (Widget::Toggle(TEXT("Menu.ShowLocation"), &Overlay::m_bLocName))
             {
                 gConfig.Set("Overlay.ShowLocationName", Overlay::m_bLocName);
             }
 
-            ImGui::NextColumn();
-
-            if (ImGui::Checkbox(TEXT("Menu.ShowModelInfo"), &Overlay::m_bModelInfo))
+#ifndef GTA3
+            if (Widget::Toggle(TEXT("Menu.ShowModelInfo"), &Overlay::m_bModelInfo))
             {
                 gConfig.Set("Overlay.ShowModelInfo", Overlay::m_bModelInfo);
             }
+#endif
 
-            if (ImGui::Checkbox(TEXT("Menu.ShowPedTasks"), &Overlay::m_bPedTasks))
+            ImGui::NextColumn();
+
+            if (Widget::Toggle(TEXT("Menu.ShowPlaytime"), &Overlay::m_bPlaytime))
+            {
+                gConfig.Set("Overlay.ShowPlaytime", Overlay::m_bPlaytime);
+            }
+
+            if (Widget::Toggle(TEXT("Menu.ShowPedTasks"), &Overlay::m_bPedTasks))
             {
                 gConfig.Set("Overlay.ShowPedTasks", Overlay::m_bPedTasks);
             }
 
-            if (ImGui::Checkbox(TEXT("Menu.ShowRAM"), &Overlay::m_bMemUsage))
+            if (Widget::Toggle(TEXT("Menu.ShowRAM"), &Overlay::m_bMemUsage))
             {
                 gConfig.Set("Overlay.ShowMemoryUsage", Overlay::m_bMemUsage);
             }
 
-            if (ImGui::Checkbox(TEXT("Menu.ShowVehHealth"), &Overlay::m_bVehHealth))
+            if (Widget::Toggle(TEXT("Menu.ShowVehHealth"), &Overlay::m_bVehHealth))
             {
                 gConfig.Set("Overlay.ShowVehicleHealth", Overlay::m_bVehHealth);
             }
 
-            if (ImGui::Checkbox(TEXT("Menu.ShowVehSpeed"), &Overlay::m_bVehSpeed))
+            if (Widget::Toggle(TEXT("Menu.ShowVehSpeed"), &Overlay::m_bVehSpeed))
             {
                 gConfig.Set("Overlay.ShowVehicleSpeed", Overlay::m_bVehSpeed);
             }
@@ -196,7 +197,7 @@ void MenuPage::Draw()
 
             ImGui::EndTabItem();
         }
-        if (ImGui::BeginTabItem(TEXT("Menu.Hotkeys")))
+        if (ImGui::BeginTabItem(TEXT( "Menu.Hotkeys")))
         {
             ImGui::Spacing();
             ImGui::Text(TEXT("Menu.Usage"));
@@ -217,7 +218,7 @@ void MenuPage::Draw()
             freeCamRight.DrawUI(TEXT("Menu.FreecamRightKey"));
             quickTeleport.DrawUI(TEXT("Menu.QuickTPKey"));
             teleportMarker.DrawUI(TEXT("Menu.TPMarkerKey"));
-            
+
             ImGui::Dummy(ImVec2(0, 10));
 
             fixVeh.DrawUI(TEXT("Menu.FixVehKey"));
@@ -232,7 +233,7 @@ void MenuPage::Draw()
             ImGui::EndChild();
             ImGui::EndTabItem();
         }
-        if (ImGui::BeginTabItem(TEXT("Menu.Commands")))
+        if (ImGui::BeginTabItem(TEXT( "Menu.Commands")))
         {
             if (ImGui::BeginChild("CommandsChild"))
             {
@@ -286,30 +287,33 @@ void MenuPage::Draw()
             }
             ImGui::EndTabItem();
         }
-        if (ImGui::BeginTabItem(TEXT("Menu.About")))
+        if (ImGui::BeginTabItem(TEXT( "Menu.About")))
         {
             ImGui::Spacing();
 
-            if (ImGui::Button(TEXT("Menu.CheckUpdate"), ImVec2(Widget::CalcSize(2))))
+            ImVec2 btn_sz = ImVec2(Widget::CalcSize(4));
+            if (ImGui::Button(TEXT("Menu.CheckUpdate"), btn_sz))
             {
                 Updater::CheckUpdate();
             }
 
             ImGui::SameLine();
 
-            if (ImGui::Button(TEXT("Menu.DiscordServer"), ImVec2(Widget::CalcSize(2))))
+            if (ImGui::Button(TEXT("Menu.DiscordServer"), btn_sz))
             {
                 OPEN_LINK(DISCORD_INVITE);
             }
 
-            if (ImGui::Button(TEXT("Menu.GitHubRepo"), ImVec2(Widget::CalcSize(2))))
+            ImGui::SameLine();
+            
+            if (ImGui::Button(TEXT("Menu.GitHubRepo"), btn_sz))
             {
                 OPEN_LINK(GITHUB_LINK);
             }
-            
+
             ImGui::SameLine();
 
-            if (ImGui::Button(TEXT("Menu.Patreon"), ImVec2(Widget::CalcSize(2))))
+            if (ImGui::Button(TEXT("Menu.Patreon"), btn_sz))
             {
                 OPEN_LINK(PATREON_LINK);
             }
@@ -335,12 +339,12 @@ void MenuPage::Draw()
                 Widget::TextCentered(TEXT("Menu.CopyrightDisclaimer"));
 
                 ImGui::Dummy(ImVec2(0, 30));
-                if (ImGui::BeginTable("Hall of Fame", 2, ImGuiTableFlags_ScrollY))
+                if (ImGui::BeginTable("Hall of Fame", 2, NULL))
                 {
                     ImGui::TableSetupColumn(TEXT("Menu.Name"), ImGuiTableColumnFlags_WidthFixed, 100);
                     ImGui::TableSetupColumn(TEXT("Menu.Credits"));
                     ImGui::TableHeadersRow();
-                    
+
                     ImGui::TableNextRow();
                     ImGui::TableNextColumn();
                     ImGui::Text("Codenulls");
@@ -349,9 +353,9 @@ void MenuPage::Draw()
 
                     ImGui::TableNextRow();
                     ImGui::TableNextColumn();
-                    ImGui::Text("DKPac22");
+                    ImGui::Text("cmdwtf");
                     ImGui::TableNextColumn();
-                    ImGui::Text("Plugin SDK, vehicle texture code");
+                    ImGui::Text("ImGui toggles");
 
                     ImGui::TableNextRow();
                     ImGui::TableNextColumn();
@@ -379,6 +383,12 @@ void MenuPage::Draw()
 
                     ImGui::TableNextRow();
                     ImGui::TableNextColumn();
+                    ImGui::Text("Seeman");
+                    ImGui::TableNextColumn();
+                    ImGui::Text("Installer");
+
+                    ImGui::TableNextRow();
+                    ImGui::TableNextColumn();
                     ImGui::Text("TsudaKageyu");
                     ImGui::TableNextColumn();
                     ImGui::Text("MinHook");
@@ -394,7 +404,7 @@ void MenuPage::Draw()
                     ImGui::Text(TEXT("Main.TranslatorName"));
                     ImGui::TableNextColumn();
                     ImGui::Text(TEXT("Main.Translator"));
-                    
+
                     ImGui::EndTable();
                 }
 

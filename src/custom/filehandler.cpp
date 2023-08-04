@@ -15,7 +15,8 @@ void FileHandler::GenerateHandlingFile(tHandlingData *pHandling, std::map<int, s
     float tractionMultiplier = pHandling->m_fTractionMultiplier;
     float tractionLoss = pHandling->m_fTractionLoss;
     float tractionBias = pHandling->m_fTractionBias;
-    float engineAcceleration = pHandling->m_transmissionData.m_fEngineAcceleration * 12500;
+    float engineAcceleration = pHandling->m_transmissionData.m_fEngineAcceleration * 25000.0f;
+    engineAcceleration /= pHandling->m_transmissionData.m_nDriveType == 52 ? 4.0f : 2.0f;
     float engineInertia = pHandling->m_transmissionData.m_fEngineInertia;
     int driveType = pHandling->m_transmissionData.m_nDriveType;
     int engineType = pHandling->m_transmissionData.m_nEngineType;
@@ -82,7 +83,7 @@ void FileHandler::FetchHandlingID(std::map<int, std::string>& storeMap)
             {
                 continue;
             }
-            
+
             // replace comma and remove tabs
             uint8_t sz = bufSize;
             for(uint8_t i = 0; i < sz; ++i)
@@ -107,10 +108,10 @@ void FileHandler::FetchHandlingID(std::map<int, std::string>& storeMap)
             char model[32], txd[32], type[32], handling[32];
             if (sscanf(buf, "%d %s %s %s %s", &id, model, txd, type, handling) == 5)
             {
-               storeMap[id] = std::string(handling);
+                storeMap[id] = std::string(handling);
             }
         }
-       fclose(pFile);
+        fclose(pFile);
     }
 }
 #endif
@@ -150,7 +151,7 @@ void FileHandler::FetchColorData(std::vector<std::vector<float>>& storeVec)
                 }
             }
 
-            int r = 0, g = 0, b = 0; 
+            int r = 0, g = 0, b = 0;
             if (sscanf(buf, "%d %d %d", &r, &g, &b) == 3)
             {
                 storeVec.push_back({r / 255.0f, g / 255.0f, b / 255.0f});

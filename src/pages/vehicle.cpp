@@ -7,23 +7,20 @@
 #include "utils/widget.h"
 #include "utils/util.h"
 #include "custom/filehandler.h"
-#include "custom/vehpaint.h"
+#include "custom/vehcustmzr.h"
 #include "custom/autodrive.h"
-
-#ifdef GTASA
-#include <tHandlingData.h>
-#include "custom/vehmod_sa.h"
-#endif
+#include <CMatrix.h>
 
 VehiclePage& vehiclePage = VehiclePage::Get();
 VehiclePage::VehiclePage()
-: IPage<VehiclePage>(ePageID::Vehicle, "Window.VehiclePage", true)
+    : IPage<VehiclePage>(ePageID::Vehicle, "Vehicle", true)
 {
     // Get config data
     Events::initGameEvent += [this]()
     {
         m_Spawner.m_bInAir = gConfig.Get("Features.SpawnAircraftInAir", true);
         m_Spawner.m_bAsDriver = gConfig.Get("Features.SpawnInsideVehicle", true);
+        m_Spawner.m_bWithTunes = gConfig.Get("Features.SpawnWithTunes", true);
     };
 
     Events::processScriptsEvent += [this]
@@ -155,27 +152,27 @@ int VehiclePage::GetRandomTrainIdForModel(int model)
         0, 3, 6, 10, 12, 13, // model 537
         1, 5, 15 // model 538
     };
-    int _start = 0, _end = 0;
+    unsigned int start = 0, end = 0;
 
     switch (model)
     {
     case 449:
-        _start = 0;
-        _end = 1;
+        start = 0;
+        end = 1;
         break;
     case 537:
-        _start = 2;
-        _end = 7;
+        start = 2;
+        end = 7;
         break;
     case 538:
-        _start = 8;
-        _end = 10;
+        start = 8;
+        end = 10;
         break;
     default:
         Util::SetMessage("Invalid train model");
         return -1;
     }
-    int id = Random(_start, _end);
+    unsigned int id = Random(start, end);
     return train_ids[id];
 }
 #elif GTAVC
@@ -257,9 +254,155 @@ void VehiclePage::AddNew()
 
 #ifdef GTASA
 void VehiclePage::SpawnVehicle(std::string& smodel)
+{
+    CPlayerPed* player = FindPlayerPed();
+    int hplayer = CPools::GetPedRef(player);
+    int imodel = std::stoi(smodel);
+    CVehicle* pVeh = nullptr;
+
+    CVector pos = player->GetPosition();
+    float speed = 0;
+
+    bool bInVehicle = Command<Commands::IS_CHAR_IN_ANY_CAR>(hplayer);
+    if (bInVehicle && m_Spawner.m_bAsDriver)
+    {
+        CVehicle* pVeh = player->m_pVehicle;
+        int hVeh = CPools::GetVehicleRef(pVeh);
+        pos = pVeh->GetPosition();
+
+        Command<Commands::GET_CAR_SPEED>(hVeh, &speed);
+        Command<Commands::WARP_CHAR_FROM_CAR_TO_COORD>(hplayer, pos.x, pos.y, pos.z);
+
+        if (pVeh->m_nVehicleClass == VEHICLE_TRAIN)
+        {
+            Command<Commands::DELETE_MISSION_TRAIN>(hVeh);
+        }
+        else
+        {
+            Command<Commands::DELETE_CAR>(hVeh);
+        }
+    }
+
+    if (player->m_nAreaCode == 0)
+    {
+        if (m_Spawner.m_bInAir && (CModelInfo::IsHeliModel(imodel) || CModelInfo::IsPlaneModel(imodel)))
+        {
+            pos.z = 400;
+        }
+        else
+        {
+            pos.z -= 5;
+        }
+    }
+
+    if (CModelInfo::IsTrainModel(imodel))
+    {
+        int trainID = GetRandomTrainIdForModel(imodel);
+
+        if (trainID == -1) // Unknown train id
+        {
+            return;
+        }
+
+        int hVeh = 0;
+
+        // Loading all train related models
+        CStreaming::RequestModel(590, PRIORITY_REQUEST);
+        CStreaming::RequestModel(538, PRIORITY_REQUEST);
+        CStreaming::RequestModel(570, PRIORITY_REQUEST);
+        CStreaming::RequestModel(569, PRIORITY_REQUEST);
+        CStreaming::RequestModel(537, PRIORITY_REQUEST);
+        CStreaming::RequestModel(449, PRIORITY_REQUEST);
+        CStreaming::LoadAllRequestedModels(false);
+
+        CTrain* pTrain = nullptr;
+        CTrain* carraige = nullptr;
+        int track = static_cast<int>(Random(0U, 1U));
+        int node = CTrain::FindClosestTrackNode(pos, &track);
+        CTrain::CreateMissionTrain(pos, (Random(0U, 1U)) == 1U ? true : false, trainID, &pTrain, &carraige, node, track, false);
+
+        pVeh = (CVehicle*)pTrain;
+        hVeh = CPools::GetVehicleRef(pVeh);
+        if (pVeh->m_pDriver)
+        {
+            Command<Commands::DELETE_CHAR>(CPools::GetPedRef(pVeh->m_pDriver));
+        }
+
+        if (m_Spawner.m_bAsDriver)
+        {
+            Command<Commands::WARP_CHAR_INTO_CAR>(hplayer, hVeh);
+            Util::SetCarForwardSpeed(pVeh, speed);
+        }
+        Command<Commands::MARK_MISSION_TRAIN_AS_NO_LONGER_NEEDED>(hVeh);
+        Command<Commands::MARK_CAR_AS_NO_LONGER_NEEDED>(hVeh);
+        CStreaming::SetModelIsDeletable(590);
+        CStreaming::SetModelIsDeletable(538);
+        CStreaming::SetModelIsDeletable(570);
+        CStreaming::SetModelIsDeletable(569);
+        CStreaming::SetModelIsDeletable(537);
+        CStreaming::SetModelIsDeletable(449);
+    }
+    else
+    {
+        *CVehicleModelInfo::ms_compsToUse = m_nVehicleVariant;
+        CStreaming::RequestModel(imodel, PRIORITY_REQUEST);
+        CStreaming::LoadAllRequestedModels(false);
+
+        if (m_Spawner.m_nLicenseText[0] != '\0')
+        {
+            Command<Commands::CUSTOM_PLATE_FOR_NEXT_CAR>(imodel, m_Spawner.m_nLicenseText);
+        }
+
+        int hveh = 0;
+        if (m_Spawner.m_bAsDriver)
+        {
+            Command<Commands::CREATE_CAR>(imodel, pos.x, pos.y, pos.z + 4.0f, &hveh);
+            pVeh = CPools::GetVehicle(hveh);
+            pVeh->SetHeading(player->GetHeading());
+            Command<Commands::WARP_CHAR_INTO_CAR>(hplayer, hveh);
+            Util::SetCarForwardSpeed(pVeh, speed);
+        }
+        else
+        {
+            player->TransformFromObjectSpace(pos, CVector(0, 10, 0));
+            Command<Commands::CREATE_CAR>(imodel, pos.x, pos.y, pos.z + 3.0f, &hveh);
+            pVeh = CPools::GetVehicle(hveh);
+            pVeh->SetHeading(player->GetHeading() + 55.0f);
+        }
+
+        // Add random tunes
+        if (m_Spawner.m_bWithTunes && pVeh->m_nVehicleSubClass <= VEHICLE_QUAD)
+        {
+            for (int i = 0; i < 20; ++i)
+            {
+                unsigned int compID = Random(1000U, 1093U);
+
+                if (VehCustmzr.IsSideskirtComponent(compID))
+                {
+                    continue;
+                }
+
+                if (VehCustmzr.IsValidComponent(pVeh, compID))
+                {
+                    CStreaming::RequestModel(compID, eStreamingFlags::PRIORITY_REQUEST);
+                    CStreaming::LoadAllRequestedModels(true);
+                    pVeh->AddVehicleUpgrade(compID);
+                    CStreaming::SetModelIsDeletable(compID);
+                }
+            }
+        }
+
+        pVeh->m_eDoorLock = DOORLOCK_UNLOCKED;
+        pVeh->m_nAreaCode = player->m_nAreaCode;
+        Command<Commands::MARK_CAR_AS_NO_LONGER_NEEDED>(CPools::GetVehicleRef(pVeh));
+        CStreaming::SetModelIsDeletable(imodel);
+    }
+    pVeh->m_nVehicleFlags.bHasBeenOwnedByPlayer = true;
+}
+
 #else
+
 void VehiclePage::SpawnVehicle(std::string& rootkey, std::string& vehName, std::string& smodel)
-#endif
 {
     CPlayerPed* player = FindPlayerPed();
     int hplayer = CPools::GetPedRef(player);
@@ -279,20 +422,7 @@ void VehiclePage::SpawnVehicle(std::string& rootkey, std::string& vehName, std::
 
         Command<Commands::GET_CAR_SPEED>(hveh, &speed);
         Command<Commands::WARP_CHAR_FROM_CAR_TO_COORD>(hplayer, pos.x, pos.y, pos.z);
-
-#ifdef GTASA
-        if (pveh->m_nVehicleClass == VEHICLE_TRAIN)
-        {
-            Command<Commands::DELETE_MISSION_TRAIN>(hveh);
-        }
-        else
-        {
-            
-            Command<Commands::DELETE_CAR>(hveh);
-        }
-#else
         Command<Commands::DELETE_CAR>(hveh);
-#endif
     }
 
     if (interior == 0)
@@ -306,120 +436,56 @@ void VehiclePage::SpawnVehicle(std::string& rootkey, std::string& vehName, std::
             pos.z -= 5;
         }
     }
+#ifdef GTAVC
+        *CVehicleModelInfo::ms_compsToUse = m_nVehicleVariant;
+#endif
 
-#ifdef GTASA
-    if (CModelInfo::IsTrainModel(imodel))
+    CStreaming::RequestModel(imodel, PRIORITY_REQUEST);
+    CStreaming::LoadAllRequestedModels(false);
+    int hveh = 0;
+    if (m_Spawner.m_bAsDriver)
     {
-        int train_id = GetRandomTrainIdForModel(imodel);
+        Command<Commands::CREATE_CAR>(imodel, pos.x, pos.y, pos.z + 4.0f, &hveh);
+        veh = CPools::GetVehicle(hveh);
+#ifdef GTAVC
+        float x,y,z;
+        player->m_placement.GetOrientation(x, y, z);
+        veh->m_placement.SetOrientation(x, y, z);
+        Command<Commands::WARP_CHAR_INTO_CAR>(hplayer, hveh);
+#else
+        float x,y,z;
+        player->GetOrientation(x, y, z);
+        player->SetObjective(OBJECTIVE_ENTER_CAR_AS_DRIVER);
+        player->WarpPedIntoCar(veh);
+        veh->SetOrientation(x, y, z);
+#endif
 
-        if (train_id == -1) // Unknown train id
-            return;
-
-        int hveh = 0;
-
-        // Loading all train related models
-        CStreaming::RequestModel(590, PRIORITY_REQUEST);
-        CStreaming::RequestModel(538, PRIORITY_REQUEST);
-        CStreaming::RequestModel(570, PRIORITY_REQUEST);
-        CStreaming::RequestModel(569, PRIORITY_REQUEST);
-        CStreaming::RequestModel(537, PRIORITY_REQUEST);
-        CStreaming::RequestModel(449, PRIORITY_REQUEST);
-
-        CStreaming::LoadAllRequestedModels(false);
-
-        CTrain* train = nullptr;
-        CTrain* carraige = nullptr;
-        int track = Random(0, 1);
-        int node = CTrain::FindClosestTrackNode(pos, &track);
-        CTrain::CreateMissionTrain(pos, (Random(0, 1)) == 1 ? true : false, train_id, &train, &carraige, node,
-                                   track, false);
-
-        veh = (CVehicle*)train;
-        hveh = CPools::GetVehicleRef(veh);
-        if (veh->m_pDriver)
-        {
-            Command<Commands::DELETE_CHAR>(CPools::GetPedRef(veh->m_pDriver));
-        }
-
-        if (m_Spawner.m_bAsDriver)
-        {
-            Command<Commands::WARP_CHAR_INTO_CAR>(hplayer, hveh);
-            Util::SetCarForwardSpeed(veh, speed);
-        }
-        Command<Commands::MARK_MISSION_TRAIN_AS_NO_LONGER_NEEDED>(hveh);
-        Command<Commands::MARK_CAR_AS_NO_LONGER_NEEDED>(hveh);
-        CStreaming::SetModelIsDeletable(590);
-        CStreaming::SetModelIsDeletable(538);
-        CStreaming::SetModelIsDeletable(570);
-        CStreaming::SetModelIsDeletable(569);
-        CStreaming::SetModelIsDeletable(537);
-        CStreaming::SetModelIsDeletable(449);
+        Util::SetCarForwardSpeed(veh, speed);
     }
     else
     {
-#endif
-        CStreaming::RequestModel(imodel, PRIORITY_REQUEST);
-        CStreaming::LoadAllRequestedModels(false);
-#ifdef GTASA
-        if (m_Spawner.m_nLicenseText[0] != '\0')
-        {
-            Command<Commands::CUSTOM_PLATE_FOR_NEXT_CAR>(imodel, m_Spawner.m_nLicenseText);
-        }
-#endif
-        int hveh = 0;
-        if (m_Spawner.m_bAsDriver)
-        {
-            Command<Commands::CREATE_CAR>(imodel, pos.x, pos.y, pos.z + 4.0f, &hveh);
-            veh = CPools::GetVehicle(hveh);
-#ifdef GTASA
-            veh->SetHeading(player->GetHeading());
-#elif GTAVC
-            float x,y,z;
-            player->m_placement.GetOrientation(x, y, z);
-            veh->m_placement.SetOrientation(x, y, z);
+        player->TransformFromObjectSpace(pos);
+        Command<Commands::CREATE_CAR>(imodel, pos.x, pos.y, pos.z + 4.0f, &hveh);
+        veh = CPools::GetVehicle(hveh);
+#ifdef GTAVC
+        float x,y,z;
+        player->m_placement.GetOrientation(x, y, z);
+        veh->m_placement.SetOrientation(x, y, z);
 #else
-            float x,y,z;
-            player->GetOrientation(x, y, z);
-            veh->SetOrientation(x, y, z);
+        float x,y,z;
+        player->GetOrientation(x, y, z);
+        veh->SetOrientation(x, y, z);
 #endif
-            Command<Commands::WARP_CHAR_INTO_CAR>(hplayer, hveh);
-
-            Util::SetCarForwardSpeed(veh, speed);
-        }
-        else
-        {
-#ifdef GTASA
-            player->TransformFromObjectSpace(pos, CVector(0, 10, 0));
-#else
-            player->TransformFromObjectSpace(pos);
-#endif
-            Command<Commands::CREATE_CAR>(imodel, pos.x, pos.y, pos.z + 3.0f, &hveh);
-            veh = CPools::GetVehicle(hveh);
-#ifdef GTASA
-            veh->SetHeading(player->GetHeading() + 55.0f);
-#elif GTAVC
-            float x,y,z;
-            player->m_placement.GetOrientation(x, y, z);
-            veh->m_placement.SetOrientation(x, y, z);
-#else
-            float x,y,z;
-            player->GetOrientation(x, y, z);
-            veh->SetOrientation(x, y, z);
-#endif
-        }
-        veh->m_eDoorLock = DOORLOCK_UNLOCKED;
-#ifndef GTA3
-        BY_GAME(veh->m_nAreaCode, veh->m_nAreaCode, NULL) = interior;
-#endif
-        Command<Commands::MARK_CAR_AS_NO_LONGER_NEEDED>(CPools::GetVehicleRef(veh));
-        CStreaming::SetModelIsDeletable(imodel);
-#ifdef GTASA
     }
-    veh->m_nVehicleFlags.bHasBeenOwnedByPlayer = true;
-#else
-        Command<Commands::RESTORE_CAMERA_JUMPCUT>();
+    veh->m_eDoorLock = DOORLOCK_UNLOCKED;
+#ifdef GTAVC
+    BY_GAME(veh->m_nAreaCode, veh->m_nAreaCode, NULL) = interior;
 #endif
+    Command<Commands::MARK_CAR_AS_NO_LONGER_NEEDED>(CPools::GetVehicleRef(veh));
+    CStreaming::SetModelIsDeletable(imodel);
+    Command<Commands::RESTORE_CAMERA_JUMPCUT>();
 }
+#endif
 
 void VehiclePage::Draw()
 {
@@ -452,35 +518,35 @@ void VehiclePage::Draw()
     }
 
     ImGui::Spacing();
-   
+
     if (ImGui::BeginTabBar("Vehicle", ImGuiTabBarFlags_NoTooltip + ImGuiTabBarFlags_FittingPolicyScroll))
-    { 
+    {
         CVehicle* pVeh = pPlayer->m_pVehicle;
         bool is_driver = pVeh && (pPlayer->m_pVehicle->m_pDriver == pPlayer);
 
         ImGui::Spacing();
 
-        if (ImGui::BeginTabItem(TEXT("Window.CheckboxTab")))
+        if (ImGui::BeginTabItem(TEXT( "Window.ToggleTab")))
         {
-            ImGui::Spacing();
             ImGui::BeginChild("CheckboxesChild");
+            ImGui::Spacing();
             ImGui::Columns(2, 0, false);
 #ifdef GTASA
-            Widget::CheckboxAddr(TEXT("Vehicle.AimDrive"), 0x969179);
-            Widget::CheckboxAddr(TEXT("Vehicle.AllNitro"), 0x969165);
+            Widget::ToggleAddr<int8_t>(TEXT("Vehicle.AimDrive"), 0x969179);
+            Widget::ToggleAddr<int8_t>(TEXT("Vehicle.AllNitro"), 0x969165);
 #endif
 
-            Widget::Checkbox(TEXT("Vehicle.AutoUnflip"), &m_bAutoUnflip);
+            Widget::Toggle(TEXT("Vehicle.AutoUnflip"), &m_bAutoUnflip);
 
 #ifndef GTA3
-            Widget::CheckboxAddr(TEXT("Vehicle.AggroDriver"), BY_GAME(0x96914F,0xA10B47, NULL));
-            Widget::CheckboxAddr(TEXT("Vehicle.AllTaxiNitro"), BY_GAME(0x96918B,0xA10B3A, NULL));
-            Widget::Checkbox(TEXT("Vehicle.BikeFly"), &m_bBikeFly);
-            Widget::CheckboxAddr(TEXT("Vehicle.BoatFly"), BY_GAME(0x969153, 0xA10B11, NULL));
+            Widget::ToggleAddr<int8_t>(TEXT("Vehicle.AggroDriver"), BY_GAME(0x96914F,0xA10B47, NULL));
+            Widget::ToggleAddr<int8_t>(TEXT("Vehicle.AllTaxiNitro"), BY_GAME(0x96918B,0xA10B3A, NULL));
+            Widget::Toggle(TEXT("Vehicle.BikeFly"), &m_bBikeFly);
+            Widget::ToggleAddr<int8_t>(TEXT("Vehicle.BoatFly"), BY_GAME(0x969153, 0xA10B11, NULL));
 #endif
-            Widget::CheckboxAddr(TEXT("Vehicle.CarFly"), BY_GAME(0x969160, 0xA10B28, 0x95CD75));
-            Widget::Checkbox(TEXT("Vehicle.CarHeavy"), &m_bVehHeavy);
-            if (Widget::Checkbox(TEXT("Vehicle.DmgProof"), &m_bNoDamage, TEXT("Vehicle.DmgProofTip")))
+            Widget::ToggleAddr<int8_t>(TEXT("Vehicle.CarFly"), BY_GAME(0x969160, 0xA10B28, 0x95CD75));
+            Widget::Toggle(TEXT("Vehicle.CarHeavy"), &m_bVehHeavy);
+            if (Widget::Toggle(TEXT("Vehicle.DmgProof"), &m_bNoDamage, TEXT("Vehicle.DmgProofTip")))
             {
                 if (pVeh && !m_bNoDamage)
                 {
@@ -500,7 +566,7 @@ void VehiclePage::Draw()
                     pVeh->m_nFlags.bMeleeProof = false;
                     pVeh->m_nFlags.bImmuneToNonPlayerDamage = false;
                     patch::SetRaw(0x614E20, (void*)"\xD9\x9D\x04\x02\x00\x00", 6);
-                    
+
                     // restore tyre burst
                     patch::SetRaw(0x609F30, (void*)"\x53\x56\x57", 3);
                     patch::SetRaw(0x5886A0, (void*)"\x53\x56\x55", 3);
@@ -517,9 +583,9 @@ void VehiclePage::Draw()
                 }
             }
 #ifdef GTASA
-            Widget::CheckboxAddrRaw(TEXT("Vehicle.LockTrainCam"), 0x52A52F, 1, "\xAB", "\x06");
-            Widget::CheckboxAddr(TEXT("Vehicle.LessTraffic"), 0x96917A);
-            if (Widget::Checkbox(TEXT("Vehicle.NoDerail"), &m_bNoDerail))
+            Widget::ToggleAddr<int8_t>(TEXT("Vehicle.LockTrainCam"), 0x52A52F, " ", 0xAB, 0x6);
+            Widget::ToggleAddr<int8_t>(TEXT("Vehicle.LessTraffic"), 0x96917A);
+            if (Widget::Toggle(TEXT("Vehicle.NoDerail"), &m_bNoDerail))
             {
                 if (m_bNoDerail)
                 {
@@ -532,7 +598,7 @@ void VehiclePage::Draw()
                     patch::SetRaw(0x6F8C2A, (void*)"\x8A\x46\x36\xA8\xF8\xD8\x8E", 7);
                 }
             }
-            // if (Widget::Checkbox(TEXT("Vehicle.NoColl"), &m_bDisableColDetection))
+            // if (Widget::Toggle(TEXT("Vehicle.NoColl"), &m_bDisableColDetection))
             // {
             // 	if (m_bDisableColDetection)
             // 	{
@@ -558,14 +624,14 @@ void VehiclePage::Draw()
 #endif
             ImGui::NextColumn();
 #ifndef GTA3
-            if (Widget::Checkbox(TEXT("Vehicle.StayOnBike"), &m_bDontFallBike))
+            if (Widget::Toggle(TEXT("Vehicle.StayOnBike"), &m_bDontFallBike))
             {
                 if (m_bDontFallBike)
                 {
 #ifdef GTASA
                     pPlayer->m_nPedFlags.CantBeKnockedOffBike = 1;
 #elif GTAVC
-                    
+
                     patch::PutRetn(0x613920, 0x10);
 #endif
                 }
@@ -574,92 +640,93 @@ void VehiclePage::Draw()
 #ifdef GTASA
                     pPlayer->m_nPedFlags.CantBeKnockedOffBike = 2;
 #elif GTAVC
-                    
+
                     patch::SetRaw(0x613920, (void*)"\x53\x56\x57\x55", 4);
 #endif
                 }
             }
-            Widget::CheckboxAddr(TEXT("Vehicle.DriveWater"), BY_GAME(0x969152, 0xA10B81, NULL));
+            Widget::ToggleAddr<int8_t>(TEXT("Vehicle.DriveWater"), BY_GAME(0x969152, 0xA10B81, NULL));
 #endif
 #ifdef GTASA
-            Widget::CheckboxAddr(TEXT("Vehicle.FloatOnHit"), 0x969166);
+            Widget::ToggleAddr<int8_t>(TEXT("Vehicle.FloatOnHit"), 0x969166);
 #endif
 #ifndef GTA3
-            Widget::CheckboxAddr(TEXT("Vehicle.GreenLights"), BY_GAME(0x96914E, 0xA10ADC, NULL));
+            Widget::ToggleAddr<int8_t>(TEXT("Vehicle.GreenLights"), BY_GAME(0x96914E, 0xA10ADC, NULL));
 #endif
 #ifdef GTASA
-            Widget::CheckboxAddr(TEXT("Vehicle.PerfectHandling"), 0x96914C);
-            Widget::CheckboxAddr(TEXT("Vehicle.TankMode"), 0x969164);
+            Widget::ToggleAddr<int8_t>(TEXT("Vehicle.PerfectHandling"), 0x96914C);
+            Widget::ToggleAddr<int8_t>(TEXT("Vehicle.TankMode"), 0x969164);
 
-            Widget::Checkbox(TEXT("Vehicle.InfNitro"), &VehMod.m_Nitro.m_bEnabled, TEXT("Vehicle.InfNitroTip"));
-            if (Widget::Checkbox(TEXT("Vehicle.FlipNoBurn"), &m_bVehFlipNoBurn, TEXT("Vehicle.FlipNoBurnTip")))
+            Widget::Toggle(TEXT("Vehicle.InfNitro"), &VehCustmzr.m_Nitro.m_bEnabled, TEXT("Vehicle.InfNitroTip"));
+            if (Widget::Toggle(TEXT("Vehicle.FlipNoBurn"), &m_bVehFlipNoBurn, TEXT("Vehicle.FlipNoBurnTip")))
             {
                 // MixSets (Link2012)
                 if (m_bVehFlipNoBurn)
                 {
-                    // Patch ped vehicles damage when flipped
-                    patch::SetRaw(0x6A776B, (void*)"\xD8\xDD\x00\x00\x00\x00", 6); // fstp st0, nop 4
+                    if (pVeh && pPlayer->m_nPedFlags.bInVehicle)
+                    {
+                        pVeh->ExtinguishCarFire();
+                    }
 
                     // Patch player vehicle damage when flipped
-                    patch::SetRaw(0x570E7F, (void*)"\xD8\xDD\x00\x00\x00\x00", 6); // fstp st0, nop 4
+                    patch::SetRaw(0x570E7F, (void*)"\xD8\xDD\x90\x90\x90\x90", 6); // fstp st0, nop 4
                 }
                 else
                 {
                     // restore patches
-                    patch::SetRaw(0x6A776B, (void*)"\xD9\x9E\xC0\x04\x00\x00", 6);
                     patch::SetRaw(0x570E7F, (void*)"\xD9\x99\xC0\x04\x00\x00", 6); // fstp dword ptr [ecx+4C0h]
                 }
             }
 
 #elif GTA3
-            Widget::CheckboxAddr(TEXT("Vehicle.PerfectHandling"), 0x95CD66);
+            Widget::ToggleAddr<int8_t>(TEXT("Vehicle.PerfectHandling"), 0x95CD66);
 #endif
-            Widget::Checkbox(TEXT("Vehicle.Watertight"), &m_bVehWatertight, TEXT("Vehicle.WatertightTip"));
-            Widget::CheckboxAddr(TEXT("Vehicle.OnlyWheels"), BY_GAME(0x96914B, 0xA10B70, 0x95CD78));
+            Widget::Toggle(TEXT("Vehicle.Watertight"), &m_bVehWatertight, TEXT("Vehicle.WatertightTip"));
+            Widget::ToggleAddr<int8_t>(TEXT("Vehicle.OnlyWheels"), BY_GAME(0x96914B, 0xA10B70, 0x95CD78));
             ImGui::Columns(1);
 
             if (is_driver)
             {
                 ImGui::NewLine();
-                ImGui::TextWrapped(TEXT("Vehicle.ForCurVeh"));
-
+                ImGui::SeparatorText(TEXT("Vehicle.ForCurVeh"));
+                ImGui::Spacing();
                 ImGui::Columns(2, 0, false);
 
                 bool state = false;
 #ifdef GTASA
                 state = pVeh->m_nVehicleFlags.bAlwaysSkidMarks;
-                if (Widget::Checkbox(TEXT("Vehicle.SkidMarks"), &state, nullptr))
+                if (Widget::Toggle(TEXT("Vehicle.SkidMarks"), &state, nullptr))
                     pVeh->m_nVehicleFlags.bAlwaysSkidMarks = state;
 #endif
 
                 state = BY_GAME(pVeh->m_nPhysicalFlags.bBulletProof, pVeh->m_nFlags.bBulletProof, pVeh->m_nFlags.bBulletProof);
-                if (Widget::Checkbox(TEXT("Vehicle.BulletProof"), &state, nullptr, m_bNoDamage))
+                if (Widget::Toggle(TEXT("Vehicle.BulletProof"), &state, nullptr, m_bNoDamage))
                 {
                     BY_GAME(pVeh->m_nPhysicalFlags.bBulletProof, pVeh->m_nFlags.bBulletProof, pVeh->m_nFlags.bBulletProof) = state;
                 }
 
                 state = BY_GAME(pVeh->m_nPhysicalFlags.bCollisionProof, pVeh->m_nFlags.bCollisionProof, pVeh->m_nFlags.bCollisionProof);
-                if (Widget::Checkbox(TEXT("Vehicle.ColProof"), &state, nullptr, m_bNoDamage))
+                if (Widget::Toggle(TEXT("Vehicle.ColProof"), &state, nullptr, m_bNoDamage))
                 {
                     BY_GAME(pVeh->m_nPhysicalFlags.bCollisionProof, pVeh->m_nFlags.bCollisionProof, pVeh->m_nFlags.bCollisionProof) = state;
                 }
 
 #ifdef GTASA
                 state = pVeh->m_nVehicleFlags.bDisableParticles;
-                if (Widget::Checkbox(TEXT("Vehicle.NoParticles"), &state, nullptr))
+                if (Widget::Toggle(TEXT("Vehicle.NoParticles"), &state, nullptr))
                 {
                     pVeh->m_nVehicleFlags.bDisableParticles = state;
                 }
 
                 state = pVeh->m_nVehicleFlags.bVehicleCanBeTargetted;
-                if (Widget::Checkbox(TEXT("Vehicle.DriverTarget"), &state))
+                if (Widget::Toggle(TEXT("Vehicle.DriverTarget"), &state))
                 {
                     pVeh->m_nVehicleFlags.bVehicleCanBeTargetted = state;
                 }
 #endif
 
                 state = BY_GAME(!pVeh->m_nVehicleFlags.bEngineBroken, true, true) || pVeh->m_nVehicleFlags.bEngineOn;
-                if (Widget::Checkbox(TEXT("Vehicle.EngineOn"), &state, nullptr, !is_driver))
+                if (Widget::Toggle(TEXT("Vehicle.EngineOn"), &state, nullptr, !is_driver))
                 {
 #ifdef GTASA
                     pVeh->m_nVehicleFlags.bEngineBroken = !state;
@@ -668,13 +735,13 @@ void VehiclePage::Draw()
                 }
 
                 state = BY_GAME(pVeh->m_nPhysicalFlags.bExplosionProof, pVeh->m_nFlags.bExplosionProof, pVeh->m_nFlags.bExplosionProof);
-                if (Widget::Checkbox(TEXT("Vehicle.ExplosionProof"), &state, nullptr, m_bNoDamage))
+                if (Widget::Toggle(TEXT("Vehicle.ExplosionProof"), &state, nullptr, m_bNoDamage))
                 {
                     BY_GAME(pVeh->m_nPhysicalFlags.bExplosionProof, pVeh->m_nFlags.bExplosionProof, pVeh->m_nFlags.bExplosionProof) = state;
                 }
 
                 state = BY_GAME(pVeh->m_nPhysicalFlags.bFireProof, pVeh->m_nFlags.bFireProof, pVeh->m_nFlags.bFireProof);
-                if (Widget::Checkbox(TEXT("Vehicle.FireProof"), &state, nullptr, m_bNoDamage))
+                if (Widget::Toggle(TEXT("Vehicle.FireProof"), &state, nullptr, m_bNoDamage))
                 {
                     BY_GAME(pVeh->m_nPhysicalFlags.bFireProof, pVeh->m_nFlags.bFireProof, pVeh->m_nFlags.bFireProof) = state;
                 }
@@ -683,51 +750,51 @@ void VehiclePage::Draw()
 
 #ifdef GTASA
                 state = pVeh->m_nVehicleFlags.bVehicleCanBeTargettedByHS;
-                if (Widget::Checkbox(TEXT("Vehicle.HSTarget"), &state, TEXT("Vehicle.HSTargetTip")))
+                if (Widget::Toggle(TEXT("Vehicle.HSTarget"), &state, TEXT("Vehicle.HSTargetTip")))
                 {
                     pVeh->m_nVehicleFlags.bVehicleCanBeTargettedByHS = state;
                 }
 #endif
 
                 state = !BY_GAME(pVeh->m_bIsVisible, pVeh->m_nFlags.bIsVisible, pVeh->m_nFlags.bIsVisible);
-                if (Widget::Checkbox(TEXT("Vehicle.InvisCar"), &state, nullptr, !is_driver))
+                if (Widget::Toggle(TEXT("Vehicle.InvisCar"), &state, nullptr, !is_driver))
                 {
                     BY_GAME(pVeh->m_bIsVisible, pVeh->m_nFlags.bIsVisible, pVeh->m_nFlags.bIsVisible) = !state;
                 }
 
                 state = BY_GAME(!pVeh->ms_forceVehicleLightsOff, pVeh->m_nVehicleFlags.bLightsOn, pVeh->m_nVehicleFlags.bLightsOn);
-                if (Widget::Checkbox(TEXT("Vehicle.LightsOn"), &state, nullptr, !is_driver))
+                if (Widget::Toggle(TEXT("Vehicle.LightsOn"), &state, nullptr, !is_driver))
                 {
                     BY_GAME(pVeh->ms_forceVehicleLightsOff, pVeh->m_nVehicleFlags.bLightsOn, pVeh->m_nVehicleFlags.bLightsOn) = state;
                 }
 
                 state = pVeh->m_eDoorLock == DOORLOCK_LOCKED_PLAYER_INSIDE;
-                if (Widget::Checkbox(TEXT("Vehicle.LockDoor"), &state, nullptr, !is_driver))
+                if (Widget::Toggle(TEXT("Vehicle.LockDoor"), &state, nullptr, !is_driver))
                 {
                     pVeh->m_eDoorLock = state ? DOORLOCK_LOCKED_PLAYER_INSIDE : DOORLOCK_UNLOCKED;
                 }
 
                 state = BY_GAME(pVeh->m_nPhysicalFlags.bMeleeProof, pVeh->m_nFlags.bMeleeProof, pVeh->m_nFlags.bMeleeProof);
-                if (Widget::Checkbox(TEXT("Vehicle.MeleeProof"), &state, nullptr, m_bNoDamage))
+                if (Widget::Toggle(TEXT("Vehicle.MeleeProof"), &state, nullptr, m_bNoDamage))
                 {
                     BY_GAME(pVeh->m_nPhysicalFlags.bMeleeProof, pVeh->m_nFlags.bMeleeProof, pVeh->m_nFlags.bMeleeProof) = state;
                 }
 
 #ifdef GTASA
                 state = pVeh->m_nVehicleFlags.bPetrolTankIsWeakPoint;
-                if (Widget::Checkbox(TEXT("Vehicle.PentrolTank"), &state, TEXT("Vehicle.PetrolTankTip")))
+                if (Widget::Toggle(TEXT("Vehicle.PentrolTank"), &state, TEXT("Vehicle.PetrolTankTip")))
                 {
                     pVeh->m_nVehicleFlags.bPetrolTankIsWeakPoint = state;
                 }
 
                 state = pVeh->m_nVehicleFlags.bSirenOrAlarm;
-                if (Widget::Checkbox(TEXT("Vehicle.Siren"), &state))
+                if (Widget::Toggle(TEXT("Vehicle.Siren"), &state))
                 {
                     pVeh->m_nVehicleFlags.bSirenOrAlarm = state;
                 }
 
                 state = pVeh->m_nVehicleFlags.bTakeLessDamage;
-                if (Widget::Checkbox(TEXT("Vehicle.LessDmg"), &state, nullptr))
+                if (Widget::Toggle(TEXT("Vehicle.LessDmg"), &state, nullptr))
                 {
                     pVeh->m_nVehicleFlags.bTakeLessDamage = state;
                 }
@@ -739,7 +806,7 @@ void VehiclePage::Draw()
             ImGui::EndChild();
             ImGui::EndTabItem();
         }
-        if (ImGui::BeginTabItem(TEXT("Window.MenusTab")))
+        if (ImGui::BeginTabItem(TEXT( "Window.MenusTab")))
         {
             ImGui::Spacing();
             ImGui::BeginChild("MenusChild");
@@ -776,7 +843,7 @@ void VehiclePage::Draw()
                         {
                             ImGui::SameLine();
                         }
-                        
+
                         if (ImGui::Button(std::format("{} {}", TEXT("Vehicle.Passenger"), i+1).c_str(),
                                           ImVec2(Widget::CalcSize(2))))
                         {
@@ -830,7 +897,7 @@ void VehiclePage::Draw()
 #ifdef GTASA
             std::vector<Widget::BindInfo> type
             {
-                {TEXT("Vehicle.Cheap"), 0x96915E}, {TEXT("Vehicle.Country"), 0x96917B}, 
+                {TEXT("Vehicle.Cheap"), 0x96915E}, {TEXT("Vehicle.Country"), 0x96917B},
                 {TEXT("Vehicle.Fast"), 0x96915F}
             };
             Widget::EditRadioBtnAddr(TEXT("Vehicle.TrafficType"), type);
@@ -914,12 +981,12 @@ void VehiclePage::Draw()
                     ImGui::Spacing();
                     ImGui::Separator();
                 }
-#endif          
+#endif
 
                 Widget::EditAddr<float>(TEXT("Menu.VehHealth"), (int)&pVeh->m_fHealth, 0, 0, 1000);
                 if (ImGui::CollapsingHeader(TEXT("Vehicle.SetSpeed")))
                 {
-                    Widget::Checkbox(TEXT("Vehicle.LockSpeed"), &m_bLockSpeed);
+                    Widget::Toggle(TEXT("Vehicle.LockSpeed"), &m_bLockSpeed);
                     ImGui::Spacing();
                     Widget::InputFloat(TEXT("Vehicle.Set"), &m_fLockSpeed, 1.0f, 0.0f, 100.0f);
                     ImGui::Spacing();
@@ -940,36 +1007,24 @@ void VehiclePage::Draw()
             ImGui::EndChild();
             ImGui::EndTabItem();
         }
-        if (ImGui::BeginTabItem(TEXT("Window.SpawnTab")))
+        if (ImGui::BeginTabItem(TEXT( "Window.SpawnTab")))
         {
             ImGui::Spacing();
-            ImGui::Columns(2, 0, false);
-            if (Widget::Checkbox(TEXT("Vehicle.SpawnInside"), &m_Spawner.m_bAsDriver))
-            {
-                gConfig.Set("Features.SpawnInsideVehicle", m_Spawner.m_bAsDriver);
-            }
-            ImGui::NextColumn();
-            if( Widget::Checkbox(TEXT("Vehicle.SpawnInAir"), &m_Spawner.m_bInAir))
-            {
-                gConfig.Set("Features.SpawnAircraftInAir", m_Spawner.m_bInAir);
-            }
-            ImGui::Columns(1);
 
-            ImGui::Spacing();
-
-            int width = ImGui::GetWindowContentRegionWidth() - ImGui::GetStyle().ItemSpacing.x;
-#ifdef GTASA
-            width /= 2;
-#endif
-
-            ImGui::SetNextItemWidth(width);
+            ImGui::Columns(BY_GAME(3, 2, 1), NULL, false);
+            ImGui::SetNextItemWidth(ImGui::GetWindowContentRegionWidth());
             static char smodel[8];
             if (ImGui::InputTextWithHint("##SpawnID", TEXT("Vehicle.IDSpawnText"), smodel, 8, ImGuiInputTextFlags_EnterReturnsTrue))
             {
-                try{
+                try
+                {
                     int model = std::stoi(smodel);
 
-                    if (CModelInfo::IsCarModel(model))
+                    if (CModelInfo::IsVehicleModelType(model) == -1)
+                    {
+                        Util::SetMessage(TEXT("Vehicle.InvalidID"));
+                    }
+                    else
                     {
                         std::string str = std::string(smodel);
 #ifdef GTASA
@@ -979,10 +1034,6 @@ void VehiclePage::Draw()
                         SpawnVehicle(temp, temp, str);
 #endif
                     }
-                    else
-                    {
-                        Util::SetMessage(TEXT("Vehicle.InvalidID"));
-                    }
                 }
                 catch(...)
                 {
@@ -990,16 +1041,75 @@ void VehiclePage::Draw()
                 }
             }
 #ifdef GTASA
-            ImGui::SameLine();
-            ImGui::SetNextItemWidth(width);
+            ImGui::NextColumn();
+            ImGui::SetNextItemWidth(ImGui::GetWindowContentRegionWidth());
             ImGui::InputTextWithHint("##LicenseText", TEXT("Vehicle.PlateText"), m_Spawner.m_nLicenseText, 9);
-
+#endif
+#ifndef GTA3
+            ImGui::NextColumn();
+            static char current_variant = 0;
+            
+            if (ImGui::ArrowButton("Left", ImGuiDir_Left))
+            {
+                m_nVehicleVariant -= 1;
+                if (m_nVehicleVariant < 0)
+                {
+                    m_nVehicleVariant = 5;
+                }
+            }
+            ImGui::SameLine();
+            ImGui::Spacing();
+            ImGui::SameLine();
+            ImGui::Text(TEXT("Vehicle.Variant"), m_nVehicleVariant);
+            ImGui::SameLine();
+            ImGui::Spacing();
+            ImGui::SameLine();
+            if (ImGui::ArrowButton("Right", ImGuiDir_Right))
+            {
+                m_nVehicleVariant += 1;
+                if (m_nVehicleVariant > 4)
+                {
+                    m_nVehicleVariant = 0;
+                }
+            }
+            
+#endif
+#ifdef GTASA
+            ImGui::Columns(1);
             Widget::ImageList(m_Spawner.m_VehData, fArgWrapper(vehiclePage.SpawnVehicle),
-            [](std::string& str){
+                              [](std::string& str)
+            {
                 return Util::GetCarName(std::stoi(str));
-            }, nullptr, fArgNoneWrapper(vehiclePage.AddNew));
+            }, nullptr, fArgNoneWrapper(vehiclePage.AddNew),
+            []()
+            {
+                if (ImGui::MenuItem(TEXT("Vehicle.SpawnWithTunes"), NULL, &vehiclePage.m_Spawner.m_bWithTunes))
+                {
+                    gConfig.Set("Features.SpawnWithTunes", vehiclePage.m_Spawner.m_bWithTunes);
+                }
+                if (ImGui::MenuItem(TEXT("Vehicle.SpawnInAir"), NULL, &vehiclePage.m_Spawner.m_bInAir))
+                {
+                    gConfig.Set("Features.SpawnAircraftInAir", vehiclePage.m_Spawner.m_bInAir);
+                }
+                if (ImGui::MenuItem(TEXT("Vehicle.SpawnInside"), NULL, &vehiclePage.m_Spawner.m_bAsDriver))
+                {
+                    gConfig.Set("Features.SpawnInsideVehicle", vehiclePage.m_Spawner.m_bAsDriver);
+                }
+            });
 #else
-            Widget::DataList(m_Spawner.m_VehData, fArg3Wrapper(vehiclePage.SpawnVehicle), fArgNoneWrapper(vehiclePage.AddNew));
+            Widget::DataList(m_Spawner.m_VehData, fArg3Wrapper(vehiclePage.SpawnVehicle), fArgNoneWrapper(vehiclePage.AddNew),
+                             false,
+                             []()
+            {
+                if (ImGui::MenuItem(TEXT("Vehicle.SpawnInAir"), NULL, &vehiclePage.m_Spawner.m_bInAir))
+                {
+                    gConfig.Set("Features.SpawnAircraftInAir", vehiclePage.m_Spawner.m_bInAir);
+                }
+                if (ImGui::MenuItem(TEXT("Vehicle.SpawnInside"), NULL, &vehiclePage.m_Spawner.m_bAsDriver))
+                {
+                    gConfig.Set("Features.SpawnInsideVehicle", vehiclePage.m_Spawner.m_bAsDriver);
+                }
+            });
 #endif
             ImGui::EndTabItem();
         }
@@ -1007,17 +1117,27 @@ void VehiclePage::Draw()
         {
             CVehicle* veh = FindPlayerPed()->m_pVehicle;
             int hveh = CPools::GetVehicleRef(veh);
-            if (ImGui::BeginTabItem(TEXT("Vehicle.AutoDrive")))
+#ifdef GTASA
+            if (ImGui::BeginTabItem(TEXT( "Vehicle.Customize")))
+            {
+                ImGui::Spacing();
+
+                if (ImGui::BeginTabBar("CustomizeTab"))
+                {
+                    VehCustmzr.Draw();
+                    ImGui::EndTabBar();
+                }
+                ImGui::EndTabItem();
+            }
+#else
+            VehCustmzr.Draw();
+#endif
+            if (ImGui::BeginTabItem(TEXT( "Vehicle.AutoDrive")))
             {
                 ImGui::Spacing();
                 AutoDrive.Draw();
                 ImGui::EndTabItem();
             }
-            
-            VehPaint.Draw();
-#ifdef GTASA
-            VehMod.Draw();
-#endif
         }
         ImGui::EndTabBar();
     }

@@ -1,1 +1,1 @@
-pyftsubset src.ttf --unicodes-file="in.txt" --output-file="text.ttf"
+pyftsubset title.ttf --unicodes-file="title.txt" --output-file="titleout.ttf"

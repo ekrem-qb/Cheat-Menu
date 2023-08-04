@@ -77,6 +77,8 @@
         "*.rh": "cpp",
         "csignal": "cpp",
         "coroutine": "cpp",
-        "any": "cpp"
+        "any": "cpp",
+        "variant": "cpp",
+        "codecvt": "cpp"
     }
 }

@@ -4,9 +4,13 @@
 
 LONG WINAPI CrashHandler(PEXCEPTION_POINTERS pInfo)
 {
-    Log::Print<eLogLevel::None>("");
-    Log::Print<eLogLevel::Error>("Game crashed. Unhandled exception at {} (0x{:x})", 
-        pInfo->ExceptionRecord->ExceptionAddress, pInfo->ExceptionRecord->ExceptionCode);
+    DWORD code = pInfo->ExceptionRecord->ExceptionCode;
+    if (code > 0x80000000)
+    {
+        Log::Print<eLogLevel::None>("");
+        Log::Print<eLogLevel::Error>("Unhandled exception at {} (0x{:x})", pInfo->ExceptionRecord->ExceptionAddress, code);
+    }
+
     return EXCEPTION_CONTINUE_SEARCH;
 }
 
@@ -16,10 +20,10 @@ void MenuThread(void* param)
     AddVectoredExceptionHandler(0, CrashHandler);
     while (true)
     {
-        FontMgr::Process();
+        // FontMgr::Process();
         RPC::Process();
         Updater::Process();
-        Sleep(1000);
+        Sleep(2000);
     }
 }
 

@@ -7,7 +7,7 @@
 
 WeaponPage& weaponPage = WeaponPage::Get();
 WeaponPage::WeaponPage()
-: IPage<WeaponPage>(ePageID::Weapon, "Window.WeaponPage", true)
+    : IPage<WeaponPage>(ePageID::Weapon, "Weapon", true)
 {
     Events::processScriptsEvent += [this]
     {
@@ -132,28 +132,30 @@ static void ClearPlayerWeapon(eWeaponType weaponType)
 #endif
             }
 #ifdef GTA3
-                // This doesn't work for melee weapons aka bats, chainsaw etc
-                pWeapon->m_eWeaponState = WEAPONSTATE_OUT_OF_AMMO;
-                pWeapon->m_nAmmoTotal = 0;
-                pWeapon->m_nAmmoInClip = 0;
+            // This doesn't work for melee weapons aka bats, chainsaw etc
+            pWeapon->m_eWeaponState = WEAPONSTATE_OUT_OF_AMMO;
+            pWeapon->m_nAmmoTotal = 0;
+            pWeapon->m_nAmmoInClip = 0;
 #else
-                pWeapon->Shutdown();
+            pWeapon->Shutdown();
 #endif
         }
     }
 }
 
+int WeaponPage::GetWeaponModel(eWeaponType weaponType)
+{
+    int rtn = CallAndReturn<int, BY_GAME(NULL, 0x4418B0, 0x430690)>(weaponType); // int __cdecl CPickups::ModelForWeapon(int a1)
+    return rtn;
+}
+
 // Implementation of opcode 0x605 (CLEO)
-static eWeaponType GetWeaponTypeFromModel(int model)
+eWeaponType WeaponPage::GetWeaponType(int model)
 {
     eWeaponType weaponType = WEAPONTYPE_UNARMED;
-
     for (size_t i = 0; i < 37; i++)
     {
-
-        int temp = CallAndReturn<int, BY_GAME(NULL, 0x4418B0, 0x430690)>(i); // int __cdecl CPickups::ModelForWeapon(int a1)
-
-        if (temp == model)
+        if (GetWeaponModel(static_cast<eWeaponType>(i)) == model)
         {
             weaponType = (eWeaponType)i;
             break;
@@ -217,7 +219,7 @@ void WeaponPage::GiveWeaponToPlayer(std::string& rootkey, std::string& name, std
     CStreaming::RequestModel(iModel, PRIORITY_REQUEST);
     CStreaming::LoadAllRequestedModels(false);
 
-    eWeaponType weaponType = GetWeaponTypeFromModel(iModel);
+    eWeaponType weaponType = GetWeaponType(iModel);
     Command<Commands::GIVE_WEAPON_TO_CHAR>(hplayer, weaponType, m_nAmmoCount);
     Command<Commands::MARK_MODEL_AS_NO_LONGER_NEEDED>(iModel);
 #ifdef GTA3
@@ -291,18 +293,18 @@ void WeaponPage::Draw()
 
     if (ImGui::BeginTabBar("Ped", ImGuiTabBarFlags_NoTooltip + ImGuiTabBarFlags_FittingPolicyScroll))
     {
-        if (ImGui::BeginTabItem(TEXT("Window.CheckboxTab")))
+        if (ImGui::BeginTabItem(TEXT( "Window.ToggleTab")))
         {
-            ImGui::Spacing();
             ImGui::BeginChild("CheckboxesChild");
             ImGui::Spacing();
+            ImGui::Spacing();
             ImGui::SameLine();
-            ImGui::Text(TEXT("Window.Info"));
-            Widget::Tooltip(TEXT("Weapon.WeaponTweaksText"));
+            ImGui::Text(TEXT("Weapon.WeaponTweaksText"));
+            ImGui::Spacing();
             ImGui::Columns(2, 0, false);
 #ifdef GTASA
-            Widget::Checkbox(TEXT("Weapon.FastAim"), &m_bAutoAim, TEXT("Weapon.FastAimText"));
-            if (Widget::Checkbox(TEXT("Weapon.DualWeild"), &m_bDualWeild,TEXT("Weapon.DualWeildText")))
+            Widget::Toggle(TEXT("Weapon.FastAim"), &m_bAutoAim, TEXT("Weapon.FastAimText"));
+            if (Widget::Toggle(TEXT("Weapon.DualWeild"), &m_bDualWeild,TEXT("Weapon.DualWeildText")))
             {
                 if (!m_bDualWeild)
                 {
@@ -310,26 +312,26 @@ void WeaponPage::Draw()
                 }
             }
 #endif
-            if (Widget::Checkbox(TEXT("Weapon.HugeDamage"), &m_bHugeDamage, TEXT("Weapon.HugeDamageText")))
+            if (Widget::Toggle(TEXT("Weapon.HugeDamage"), &m_bHugeDamage, TEXT("Weapon.HugeDamageText")))
             {
                 if (!m_bHugeDamage)
                 {
                     CWeaponInfo::LoadWeaponData();
                 }
             }
-            if (Widget::Checkbox(TEXT("Weapon.FastReload"), &m_bFastReload))
+            if (Widget::Toggle(TEXT("Weapon.FastReload"), &m_bFastReload))
             {
                 Command<Commands::SET_PLAYER_FAST_RELOAD>(hplayer, m_bFastReload);
             }
 
 #ifdef GTASA
-            Widget::CheckboxAddr(TEXT("Weapon.InfiniteAmmo"), 0x969178);
+            Widget::ToggleAddr<int8_t>(TEXT("Weapon.InfiniteAmmo"), 0x969178);
             ImGui::NextColumn();
 #else
             ImGui::NextColumn();
-            Widget::Checkbox(TEXT("Weapon.InfiniteAmmo"), &m_bInfiniteAmmo);
+            Widget::Toggle(TEXT("Weapon.InfiniteAmmo"), &m_bInfiniteAmmo);
 #endif
-            if (Widget::Checkbox(TEXT("Weapon.LongRange"), &m_bLongRange))
+            if (Widget::Toggle(TEXT("Weapon.LongRange"), &m_bLongRange))
             {
                 if (!m_bLongRange)
                 {
@@ -337,28 +339,28 @@ void WeaponPage::Draw()
                 }
             }
 #ifdef GTASA
-            if (Widget::Checkbox(TEXT("Weapon.MoveWhenAiming"), &m_bMoveAim))
+            if (Widget::Toggle(TEXT("Weapon.MoveWhenAiming"), &m_bMoveAim))
             {
                 if (!m_bMoveAim)
                 {
                     CWeaponInfo::LoadWeaponData();
                 }
             }
-            if (Widget::Checkbox(TEXT("Weapon.MoveWhenFiring"), &m_bMoveFire))
+            if (Widget::Toggle(TEXT("Weapon.MoveWhenFiring"), &m_bMoveFire))
             {
                 if (!m_bMoveFire)
                 {
                     CWeaponInfo::LoadWeaponData();
                 }
             }
-            if (Widget::Checkbox(TEXT("Weapon.NoSpread"), &m_bNoSpread))
+            if (Widget::Toggle(TEXT("Weapon.NoSpread"), &m_bNoSpread))
             {
                 if (!m_bNoSpread)
                 {
                     CWeaponInfo::LoadWeaponData();
                 }
             }
-            if (Widget::Checkbox(TEXT("Weapon.RapidFire"), &m_bRapidFire))
+            if (Widget::Toggle(TEXT("Weapon.RapidFire"), &m_bRapidFire))
             {
                 if (!m_bRapidFire)
                 {
@@ -370,7 +372,7 @@ void WeaponPage::Draw()
             ImGui::EndChild();
             ImGui::EndTabItem();
         }
-        if (ImGui::BeginTabItem(TEXT("Window.SpawnTab")))
+        if (ImGui::BeginTabItem(TEXT( "Window.SpawnTab")))
         {
             ImGui::Spacing();
             if (ImGui::InputInt(TEXT("Weapon.Ammo"), &m_nAmmoCount))
@@ -380,7 +382,7 @@ void WeaponPage::Draw()
             }
 #ifdef GTASA
             Widget::ImageList(m_WeaponData, fArgWrapper(weaponPage.GiveWeaponToPlayer),
-            [this](std::string& str)
+                              [this](std::string& str)
             {
                 return m_WeaponData.m_pData->Get(str.c_str(), "Unknown");
             },
@@ -394,21 +396,29 @@ void WeaponPage::Draw()
             ImGui::EndTabItem();
         }
 #ifdef GTASA
-        if (ImGui::BeginTabItem(TEXT("Weapon.GangWeaponEditor")))
+        if (ImGui::BeginTabItem(TEXT( "Weapon.GangWeaponEditor")))
         {
             ImGui::Spacing();
-            ImGui::Combo(TEXT("Weapon.SelectGang"), &m_Gang.m_nSelected, pedPage.m_GangList);
-            ImGui::Combo(TEXT("Ped.SelectWeapon"), &m_Gang.m_nSelectedWeapon, "Weapon 1\0Weapon 2\0Weapon 3\0");
+            float width = ImGui::GetWindowContentRegionMax().x - ImGui::GetWindowContentRegionMin().x;
+            ImGui::Columns(2, NULL, false);
+            ImGui::SetNextItemWidth(width/3);
+            ImGui::Combo("##Weapon.SelectGang", &m_Gang.m_nSelected, pedPage.m_GangList);
+            ImGui::NextColumn();
+            ImGui::SetNextItemWidth(width/3);
+            ImGui::Combo("##Ped.SelectWeapon", &m_Gang.m_nSelectedWeapon, "Weapon 1\0Weapon 2\0Weapon 3\0");
+            ImGui::Columns(1);
             ImGui::Spacing();
 
             std::string key = std::to_string(m_Gang.m_WeaponList[m_Gang.m_nSelected][m_Gang.m_nSelectedWeapon]);
             ImGui::Text(TEXT("Weapon.CurrentWeapon"), m_WeaponData.m_pData->Get(key.c_str(), "Unknown").c_str());
             ImGui::Spacing();
             Widget::ImageList(m_WeaponData, fArgWrapper(weaponPage.m_Gang.SetWeapon),
-            [this](std::string& str){
+                              [this](std::string& str)
+            {
                 return m_WeaponData.m_pData->Get(str.c_str(), "Unknown");
             },
-            [](std::string& str){
+            [](std::string& str)
+            {
                 return str != "-1"; /*Jetpack*/
             });
             ImGui::EndTabItem();

@@ -11,7 +11,7 @@ static int maxSprites = *(uint*)0x5D5870;
 
 void TeleportPage::FetchRadarSpriteData()
 {
-    
+
     uint timer = CTimer::m_snTimeInMilliseconds;
     static uint lastUpdated = timer;
 
@@ -43,12 +43,13 @@ bool TeleportPage::IsQuickTeleportActive()
 TeleportPage& teleportPage = TeleportPage::Get();
 
 TeleportPage::TeleportPage()
-: IPage<TeleportPage>(ePageID::Teleport, "Window.TeleportPage", true)
+    : IPage<TeleportPage>(ePageID::Teleport, "Teleport", true)
 {
     Events::initGameEvent += [this]()
     {
         m_bTeleportMarker = gConfig.Get("Features.TeleportMarker", false);
         m_bQuickTeleport = gConfig.Get("Features.QuickTeleport", false);
+        m_bSpawnUnderwater = gConfig.Get("Features.SpawnUnderwater", false);
         m_fMapSize.x = gConfig.Get("Game.MapSizeX", 6000.0f);
         m_fMapSize.y = gConfig.Get("Game.MapSizeY", 6000.0f);
     };
@@ -63,7 +64,7 @@ TeleportPage::TeleportPage()
 #ifdef GTASA
         if (m_bQuickTeleport && quickTeleport.PressedRealtime())
         {
-            static CSprite2d map; 
+            static CSprite2d map;
             if (!map.m_pTexture)
             {
                 map.m_pTexture = gTextureList.FindRwTextureByName("map");
@@ -77,9 +78,9 @@ TeleportPage::TeleportPage()
             // draw sprites on map
             static float sz = SCREEN_MULTIPLIER(12.5f);
             for (int i = 0; i != maxSprites; ++i)
-            {   
+            {
                 tRadarTrace &trace = ms_RadarTrace[i];
-                
+
                 if (trace.m_nRadarSprite != RADAR_SPRITE_NONE)
                 {
                     CSprite2d &sprite = CRadar::RadarBlipSprites[LOWORD(trace.m_nRadarSprite)];
@@ -139,16 +140,28 @@ void TeleportPage::WarpPlayer(CVector pos, int interiorID)
             return;
         }
         pos = targetBlip.m_vecPos;
-    } 
+    }
 
     CStreaming::LoadScene(&pos);
     CStreaming::LoadSceneCollision(&pos);
     CStreaming::LoadAllRequestedModels(false);
 
     if (Type == eTeleportType::Marker || Type == eTeleportType::MapPosition)
-    {   
+    {
+        float ground, water;
         CEntity* pPlayerEntity = FindPlayerEntity(-1);
-        pos.z = CWorld::FindGroundZFor3DCoord(pos.x, pos.y, 1000, nullptr, &pPlayerEntity) + 1.0f;
+        ground = CWorld::FindGroundZFor3DCoord(pos.x, pos.y, 1000, nullptr, &pPlayerEntity) + 1.0f;
+
+        if (m_bSpawnUnderwater)
+        {
+            pos.z = ground;
+        }
+        else
+        {
+            Command<Commands::GET_WATER_HEIGHT_AT_COORDS>(pos.x, pos.y, true, &water);
+            pos.z = ground > water ? ground : water;
+        }
+
     }
 
     if (pVeh && pPlayer->m_nPedFlags.bInVehicle)
@@ -164,7 +177,7 @@ void TeleportPage::WarpPlayer(CVector pos, int interiorID)
             }
 
             pPlayer->Teleport(pos, false);
-        }  
+        }
         else
         {
             pVeh->Teleport(pos, false);
@@ -209,7 +222,7 @@ void TeleportPage::WarpPlayer(CVector pos, int interiorID)
 #endif
     CStreaming::LoadAllRequestedModels(false);
 
-    if (pVeh && pPlayer->m_pVehicle)
+    if (pVeh && pPlayer->m_pVehicle && pPlayer->m_bInVehicle)
     {
 #ifdef GTAVC
         pVeh->m_nAreaCode = interiorID;
@@ -266,25 +279,31 @@ void TeleportPage::Draw()
     if (ImGui::BeginTabBar("Teleport", ImGuiTabBarFlags_NoTooltip + ImGuiTabBarFlags_FittingPolicyScroll))
     {
         ImGui::Spacing();
-        if (ImGui::BeginTabItem(TEXT("Window.TeleportPage")))
+        if (ImGui::BeginTabItem(TEXT( "Window.TeleportPage")))
         {
             ImGui::Spacing();
             if (ImGui::BeginChild("Teleport Child"))
             {
+                ImGui::Spacing();
 #ifdef GTASA
                 ImGui::Columns(2, nullptr, false);
-                ImGui::Checkbox(TEXT("Teleport.InsertCoord"), &m_bInsertCoord);
+                Widget::Toggle(TEXT("Teleport.InsertCoord"), &m_bInsertCoord);
 
-                if (Widget::Checkbox(TEXT("Teleport.QuickTeleport"), &m_bQuickTeleport,
-                                        std::string(TEXT_S("Teleport.QuickTeleportHint") 
-                                                    + quickTeleport.GetNameString()).c_str()))
+                if (Widget::Toggle(TEXT("Teleport.QuickTeleport"), &m_bQuickTeleport,
+                                     std::string(TEXT_S("Teleport.QuickTeleportHint")
+                                                 + quickTeleport.GetNameString()).c_str()))
                 {
                     gConfig.Set("Features.QuickTeleport", m_bQuickTeleport);
                 }
                 ImGui::NextColumn();
-                if (Widget::Checkbox(TEXT("Teleport.TeleportMarker"), &m_bTeleportMarker,
-                                        std::string(TEXT_S("Teleport.TeleportMarkerHint") 
-                                                    + teleportMarker.GetNameString()).c_str()))
+                if (Widget::Toggle(TEXT("Teleport.SpawnUnderwater"), &m_bSpawnUnderwater,
+                                     TEXT("Teleport.SpawnUnderwaterHint")))
+                {
+                    gConfig.Set("Features.SpawnUnderwater", m_bSpawnUnderwater);
+                }
+                if (Widget::Toggle(TEXT("Teleport.TeleportMarker"), &m_bTeleportMarker,
+                                     std::string(TEXT_S("Teleport.TeleportMarkerHint")
+                                                 + teleportMarker.GetNameString()).c_str()))
                 {
                     gConfig.Set("Features.TeleportMarker", m_bTeleportMarker);
                 }
@@ -292,7 +311,7 @@ void TeleportPage::Draw()
 #else
                 ImGui::Spacing();
                 ImGui::SameLine();
-                ImGui::Checkbox(TEXT("Teleport.InsertCoord"), &m_bInsertCoord);
+                Widget::Toggle(TEXT("Teleport.InsertCoord"), &m_bInsertCoord);
 #endif
                 ImGui::Spacing();
 
@@ -309,7 +328,8 @@ void TeleportPage::Draw()
 
                 ImGui::Spacing();
 
-                if (ImGui::Button(TEXT("Teleport.TeleportToCoord"), Widget::CalcSize(2)))
+                ImVec2 btn_sz = Widget::CalcSize(BY_GAME(3, 2, 2));
+                if (ImGui::Button(TEXT("Teleport.TeleportToCoord"), btn_sz))
                 {
                     CVector pos{0, 0, 10};
                     if (sscanf(m_InBuf,"%f,%f,%f", &pos.x, &pos.y, &pos.z) == 3)
@@ -324,16 +344,16 @@ void TeleportPage::Draw()
                 }
                 ImGui::SameLine();
 #ifdef GTASA
-                if (ImGui::Button((TEXT_S("Teleport.TeleportMarker") + "##Btn").c_str(), Widget::CalcSize(2)))
+                if (ImGui::Button((TEXT_S("Teleport.TeleportMarker") + "##Btn").c_str(), btn_sz))
                 {
                     WarpPlayer<eTeleportType::Marker>();
                 }
-#else
-                if (ImGui::Button(TEXT("Teleport.TeleportCenter"), Widget::CalcSize(2)))
+                ImGui::SameLine();
+#endif
+                if (ImGui::Button(TEXT("Teleport.TeleportCenter"), btn_sz))
                 {
-                    WarpPlayer<eTeleportType::Coordinate>(CVector(0, 0, 23));
+                    WarpPlayer<eTeleportType::Coordinate>(CVector(0, 0, BY_GAME(3, 23, 23)));
                 }
-#endif          
                 ImGui::Dummy(ImVec2(0, 20));
 
                 if (m_bQuickTeleport)
@@ -366,14 +386,14 @@ void TeleportPage::Draw()
             ImGui::EndTabItem();
         }
 
-        if (ImGui::BeginTabItem(TEXT("Window.LocationsTab")))
+        if (ImGui::BeginTabItem(TEXT( "Window.LocationsTab")))
         {
 #ifdef GTASA
             FetchRadarSpriteData();
-#endif  
+#endif
             ImGui::Spacing();
-            Widget::DataList(m_locData, fArg3Wrapper(teleportPage.LocationClick), 
-                                fArgNoneWrapper(teleportPage.LocationAddNew));
+            Widget::DataList(m_locData, fArg3Wrapper(teleportPage.LocationClick),
+                             fArgNoneWrapper(teleportPage.LocationAddNew));
             ImGui::EndTabItem();
         }
         ImGui::EndTabBar();

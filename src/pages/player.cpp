@@ -31,7 +31,7 @@ static inline void PlayerModelBrokenFix()
 
 PlayerPage &playerPage = PlayerPage::Get();
 PlayerPage::PlayerPage()
- : IPage<PlayerPage>(ePageID::Player, "Window.PlayerPage", true)
+    : IPage<PlayerPage>(ePageID::Player, "Player", true)
 {
 #ifdef GTASA
 //	Fix player model being broken after rebuild
@@ -80,7 +80,7 @@ PlayerPage::PlayerPage()
                         prevVal = player->m_fHealth;
                     }
                     else
-                    {   
+                    {
                         // Only give armour if player has some already
                         if (player->m_fArmour >= 1)
                         {
@@ -88,7 +88,7 @@ PlayerPage::PlayerPage()
                             prevVal = player->m_fArmour;
                         }
                     }
-                  
+
                     lastTimer = timer;
                 }
             }
@@ -228,6 +228,46 @@ void PlayerPage::SetCloth(std::string& name)
     }
     CClothes::RebuildPlayer(player, false);
 }
+
+void PlayerPage::RemoveClothesTab()
+{
+    if (ImGui::BeginTabItem(TEXT( "Player.RemoveClothesTab")))
+    {
+        ImGui::TextWrapped(TEXT("Player.ClothesTip"));
+        ImGui::Spacing();
+
+        ImGui::BeginChild("ClothesRemove");
+        if (ImGui::Button(TEXT("Player.RemoveAll"), ImVec2(Widget::CalcSize(3))))
+        {
+            CPlayerPed* player = FindPlayerPed();
+            for (uint i = 0; i < 18; i++)
+            {
+                player->m_pPlayerData->m_pPedClothesDesc->SetTextureAndModel(0u, 0u, i);
+            }
+            CClothes::RebuildPlayer(player, false);
+        }
+        ImGui::SameLine();
+        size_t count = 1;
+        for (auto [k, v] : m_ClothData.m_pData->Items())
+        {
+            if (ImGui::Button(std::string(k.str()).c_str(), ImVec2(Widget::CalcSize(3))))
+            {
+                CPlayerPed* player = FindPlayerPed();
+                player->m_pPlayerData->m_pPedClothesDesc->SetTextureAndModel(0u, 0u, std::stoi(v.value_or<std::string>("0")));
+                CClothes::RebuildPlayer(player, false);
+            }
+
+            if (count % 3 != 0)
+            {
+                ImGui::SameLine();
+            }
+            ++count;
+        }
+
+        ImGui::EndChild();
+        ImGui::EndTabItem();
+    }
+}
 #endif
 
 #ifdef GTASA
@@ -295,7 +335,8 @@ void PlayerPage::Draw()
 #endif
     CPlayerInfo *pInfo = &CWorld::Players[CWorld::PlayerInFocus];
 
-    if (ImGui::Button(TEXT("Player.CopyCoordinates"), ImVec2(Widget::CalcSize(2))))
+    ImVec2 btn_sz = ImVec2(Widget::CalcSize(3));
+    if (ImGui::Button(TEXT("Player.CopyCoordinates"), btn_sz))
     {
         CVector pos = pPlayer->GetPosition();
         std::string text = std::to_string(pos.x) + ", " + std::to_string(pos.y) + ", " + std::to_string(pos.z);
@@ -304,7 +345,13 @@ void PlayerPage::Draw()
         Util::SetMessage(TEXT("Player.CoordCopied"));
     }
     ImGui::SameLine();
-    if (ImGui::Button(TEXT("Player.Suicide"), ImVec2(Widget::CalcSize(2))))
+    if (ImGui::Button(TEXT("Player.RefreshHealthArmour"), btn_sz))
+    {
+        pPlayer->m_fHealth = 150;
+        pPlayer->m_fArmour = 100;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button(TEXT("Player.Suicide"), btn_sz))
     {
         pPlayer->m_fHealth = 0.0;
     }
@@ -313,34 +360,35 @@ void PlayerPage::Draw()
 
     if (ImGui::BeginTabBar("Player", ImGuiTabBarFlags_NoTooltip + ImGuiTabBarFlags_FittingPolicyScroll))
     {
-        if (ImGui::BeginTabItem(TEXT("Window.CheckboxTab")))
+        if (ImGui::BeginTabItem(TEXT( "Window.ToggleTab")))
         {
-            ImGui::Spacing();
-
             ImGui::BeginChild("CheckboxesChild");
-
+            ImGui::Spacing();
             ImGui::Columns(2, 0, false);
-
 #ifdef GTASA
-            Widget::CheckboxAddr(TEXT("Player.BountyYourself"), 0x96913F);
+            if (Widget::Toggle(TEXT("Player.AimSkinChanger"), &m_bAimSkinChanger, (TEXT_S("Player.AimSkinChangerTip") + aimSkinChanger.GetNameString()).c_str()))
+            {
+                gConfig.Set("Features.AimSkinChanger", m_bAimSkinChanger);
+            }
+            Widget::ToggleAddr<int8_t>(TEXT("Player.BountyYourself"), 0x96913F);
 
             ImGui::BeginDisabled(TopDownCam.GetState());
-            if (Widget::Checkbox(TEXT("Player.DrunkEffect"), &m_bDrunkEffect))
+            if (Widget::Toggle(TEXT("Player.DrunkEffect"), &m_bDrunkEffect))
             {
                 if (!m_bDrunkEffect)
                 {
                     Command<eScriptCommands::COMMAND_SET_PLAYER_DRUNKENNESS> (0, 0);
                 }
             }
-            if (Widget::Checkbox(TEXT("Player.FastSprint"), &m_bFastSprint, TEXT("Player.FastSprintTip")))
+            if (Widget::Toggle(TEXT("Player.FastSprint"), &m_bFastSprint, TEXT("Player.FastSprintTip")))
             {
                 patch::Set<float>(0x8D2458, m_bFastSprint ? 0.1f : 5.0f);
             }
             ImGui::EndDisabled();
 #endif
-            Widget::CheckboxAddr(TEXT("Player.FreeHealthcare"), (int)&pInfo->m_bGetOutOfHospitalFree);
+            Widget::ToggleAddr<int8_t>(TEXT("Player.FreeHealthcare"), (int)&pInfo->m_bGetOutOfHospitalFree);
 
-            if (Widget::Checkbox(TEXT("Player.FreezeWL"), &m_bFreezeWantedLevel))
+            if (Widget::Toggle(TEXT("Player.FreezeWL"), &m_bFreezeWantedLevel))
             {
                 static unsigned int chaosLvl;
                 if (m_bFreezeWantedLevel)
@@ -363,7 +411,7 @@ void PlayerPage::Draw()
                 }
             }
 
-            if (Widget::Checkbox(TEXT("Player.GodMode"), &m_bGodMode))
+            if (Widget::Toggle(TEXT("Player.GodMode"), &m_bGodMode))
             {
 #ifdef GTASA
                 patch::Set<bool>(0x96916D, m_bGodMode, false);
@@ -407,18 +455,18 @@ void PlayerPage::Draw()
 #endif
             }
 #ifdef GTASA
-            Widget::CheckboxAddr(TEXT("Player.CycleJump"), 0x969161);
-            Widget::CheckboxAddr(TEXT("Player.InfO2"), 0x96916E);
-            if (Widget::CheckboxBits(TEXT("Player.InvisPlayer"), pPlayer->m_nPedFlags.bDontRender))
+            Widget::ToggleAddr<int8_t>(TEXT("Player.CycleJump"), 0x969161);
+            Widget::ToggleAddr<int8_t>(TEXT("Player.InfO2"), 0x96916E);
+            if (Widget::ToggleBits(TEXT("Player.InvisPlayer"), pPlayer->m_nPedFlags.bDontRender))
             {
                 pPlayer->m_nPedFlags.bDontRender = !pPlayer->m_nPedFlags.bDontRender;
             }
-            Widget::CheckboxAddr(TEXT("Player.InfSprint"), 0xB7CEE4);
+            Widget::ToggleAddr<int8_t>(TEXT("Player.InfSprint"), 0xB7CEE4);
 #else
-            Widget::CheckboxAddr(TEXT("Player.InfSprint"), (int)&pInfo->m_bInfiniteSprint);
+            Widget::ToggleAddr<int8_t>(TEXT("Player.InfSprint"), (int)&pInfo->m_bInfiniteSprint);
 #endif
-            #ifdef GTAVC
-            if (Widget::Checkbox(TEXT("Player.NoUndress"), &m_bNoUndress, TEXT("Player.NoUndressTip")))
+#ifdef GTAVC
+            if (Widget::Toggle(TEXT("Player.NoUndress"), &m_bNoUndress, TEXT("Player.NoUndressTip")))
             {
                 if (m_bNoUndress)
                 {
@@ -449,8 +497,9 @@ void PlayerPage::Draw()
                     patch::SetRaw(0x42C3B2, (void*)"\x0F\xB6\x05\xFB\x0A\xA1", 6);
                 }
             }
-#endif      
-            if (Widget::Checkbox(TEXT("Game.KeepStuff"), &m_bKeepStuff, TEXT("Game.KeepStuffText")))
+#endif
+            ImGui::NextColumn();
+            if (Widget::Toggle(TEXT("Game.KeepStuff"), &m_bKeepStuff, TEXT("Game.KeepStuffText")))
             {
 #ifdef GTASA
                 Command<Commands::SWITCH_ARREST_PENALTIES>(m_bKeepStuff);
@@ -483,26 +532,24 @@ void PlayerPage::Draw()
                 }
 #endif
             }
-            ImGui::NextColumn();
-
 #ifdef GTASA
-            if (Widget::CheckboxBits(TEXT("Player.LockControl"), pad->bPlayerSafe))
+            if (Widget::ToggleBits(TEXT("Player.LockControl"), pad->bPlayerSafe))
             {
                 pad->bPlayerSafe = !pad->bPlayerSafe;
             }
-            Widget::CheckboxAddrRaw(TEXT("Player.MaxAppeal"), 0x969180, 1, "\x01", "\x00");
-            Widget::CheckboxAddr(TEXT("Player.MegaJump"), 0x96916C);
-            Widget::CheckboxAddr(TEXT("Player.MegaPunch"), 0x969173);
-            Widget::CheckboxAddr(TEXT("Player.NeverGetHungry"), 0x969174);
+            Widget::ToggleAddr<int8_t>(TEXT("Player.MaxAppeal"), 0x969180, nullptr,  0x1, 0x0);
+            Widget::ToggleAddr<int8_t>(TEXT("Player.MegaJump"), 0x96916C);
+            Widget::ToggleAddr<int8_t>(TEXT("Player.MegaPunch"), 0x969173);
+            Widget::ToggleAddr<int8_t>(TEXT("Player.NeverGetHungry"), 0x969174);
 
             bool never_wanted = patch::Get<bool>(0x969171, false);
-            if (Widget::Checkbox(TEXT("Player.NeverWanted"), &never_wanted))
+            if (Widget::Toggle(TEXT("Player.NeverWanted"), &never_wanted))
             {
                 CCheat::NotWantedCheat();
             }
 #else
             static bool neverWanted = false;
-            if (Widget::Checkbox(TEXT("Player.NeverWanted"), &neverWanted))
+            if (Widget::Toggle(TEXT("Player.NeverWanted"), &neverWanted))
             {
                 if (neverWanted)
                 {
@@ -530,13 +577,13 @@ void PlayerPage::Draw()
                 }
             }
 #endif
-            Widget::CheckboxAddr(TEXT("Player.NoFee"), (int)&pInfo->m_bGetOutOfJailFree);
+            Widget::ToggleAddr<int8_t>(TEXT("Player.NoFee"), (int)&pInfo->m_bGetOutOfJailFree);
 
-            Widget::Checkbox(TEXT("Player.RespawnDieLoc"), &m_RespawnDieLoc.m_bEnabled, TEXT("Player.RespawnDieLocTip"));
-            Widget::Checkbox(TEXT("Player.PlayerRegen"), &m_bPlayerRegen, TEXT("Player.PlayerRegenTip"));
+            Widget::Toggle(TEXT("Player.RespawnDieLoc"), &m_RespawnDieLoc.m_bEnabled, TEXT("Player.RespawnDieLocTip"));
+            Widget::Toggle(TEXT("Player.PlayerRegen"), &m_bPlayerRegen, TEXT("Player.PlayerRegenTip"));
 #ifdef GTASA
             static bool sprintInt = false;
-            if (Widget::Checkbox(TEXT("Player.SprintEverywhere"), &sprintInt, TEXT("Player.SprintEverywhereTip")))
+            if (Widget::Toggle(TEXT("Player.SprintEverywhere"), &sprintInt, TEXT("Player.SprintEverywhereTip")))
             {
                 if (sprintInt)
                 {
@@ -551,13 +598,14 @@ void PlayerPage::Draw()
             ImGui::Columns(1);
 
             ImGui::NewLine();
-            ImGui::TextWrapped(TEXT("Player.PlayerFlags"));
+            ImGui::SeparatorText(TEXT("Player.PlayerFlags"));
+            ImGui::Spacing();
 
             ImGui::Columns(2, 0, false);
 
             bool state = BY_GAME(pPlayer->m_nPhysicalFlags.bBulletProof, pPlayer->m_nFlags.bBulletProof,
                                  pPlayer->m_nFlags.bBulletProof);
-            if (Widget::Checkbox(TEXT("Player.BulletProof"), &state, nullptr, m_bGodMode))
+            if (Widget::Toggle(TEXT("Player.BulletProof"), &state, nullptr, m_bGodMode))
             {
                 BY_GAME(pPlayer->m_nPhysicalFlags.bBulletProof, pPlayer->m_nFlags.bBulletProof,
                         pPlayer->m_nFlags.bBulletProof) = state;
@@ -565,7 +613,7 @@ void PlayerPage::Draw()
 
             state = BY_GAME(pPlayer->m_nPhysicalFlags.bCollisionProof, pPlayer->m_nFlags.bCollisionProof,
                             pPlayer->m_nFlags.bCollisionProof);
-            if (Widget::Checkbox(TEXT("Player.CollisionProof"), &state, nullptr, m_bGodMode))
+            if (Widget::Toggle(TEXT("Player.CollisionProof"), &state, nullptr, m_bGodMode))
             {
                 BY_GAME(pPlayer->m_nPhysicalFlags.bCollisionProof, pPlayer->m_nFlags.bCollisionProof,
                         pPlayer->m_nFlags.bCollisionProof) = state;
@@ -573,7 +621,7 @@ void PlayerPage::Draw()
 
             state = BY_GAME(pPlayer->m_nPhysicalFlags.bExplosionProof, pPlayer->m_nFlags.bExplosionProof,
                             pPlayer->m_nFlags.bExplosionProof);
-            if (Widget::Checkbox(TEXT("Player.ExplosionProof"), &state, nullptr, m_bGodMode))
+            if (Widget::Toggle(TEXT("Player.ExplosionProof"), &state, nullptr, m_bGodMode))
             {
                 BY_GAME(pPlayer->m_nPhysicalFlags.bExplosionProof, pPlayer->m_nFlags.bExplosionProof,
                         pPlayer->m_nFlags.bExplosionProof) = state;
@@ -583,7 +631,7 @@ void PlayerPage::Draw()
 
             state = BY_GAME(pPlayer->m_nPhysicalFlags.bFireProof, pPlayer->m_nFlags.bFireProof,
                             pPlayer->m_nFlags.bFireProof);
-            if (Widget::Checkbox(TEXT("Player.FireProof"), &state, nullptr, m_bGodMode))
+            if (Widget::Toggle(TEXT("Player.FireProof"), &state, nullptr, m_bGodMode))
             {
                 BY_GAME(pPlayer->m_nPhysicalFlags.bFireProof, pPlayer->m_nFlags.bFireProof,
                         pPlayer->m_nFlags.bFireProof) = state;
@@ -591,7 +639,7 @@ void PlayerPage::Draw()
 
             state = BY_GAME(pPlayer->m_nPhysicalFlags.bMeleeProof, pPlayer->m_nFlags.bMeleeProof,
                             pPlayer->m_nFlags.bMeleeProof);
-            if (Widget::Checkbox(TEXT("Vehicle.MeleeProof"), &state, nullptr, m_bGodMode))
+            if (Widget::Toggle(TEXT("Vehicle.MeleeProof"), &state, nullptr, m_bGodMode))
             {
                 BY_GAME(pPlayer->m_nPhysicalFlags.bMeleeProof, pPlayer->m_nFlags.bMeleeProof,
                         pPlayer->m_nFlags.bMeleeProof) = state;
@@ -601,7 +649,7 @@ void PlayerPage::Draw()
             ImGui::EndTabItem();
         }
 
-        if (ImGui::BeginTabItem(TEXT("Window.MenusTab")))
+        if (ImGui::BeginTabItem(TEXT( "Window.MenusTab")))
         {
             ImGui::BeginChild("PlayerMenus");
 
@@ -750,103 +798,54 @@ void PlayerPage::Draw()
         }
 
 #ifdef GTASA
-        if (ImGui::BeginTabItem(TEXT("Player.AppearanceTab")))
+        if (ImGui::BeginTabItem(TEXT( "Player.ClothesTab")))
         {
-            ImGui::Spacing();
-
-            if (Widget::Checkbox(TEXT("Player.AimSkinChanger"), &m_bAimSkinChanger, (TEXT_S("Player.AimSkinChangerTip") + aimSkinChanger.GetNameString()).c_str()))
+            if (pPlayer->m_nModelIndex == 0)
             {
-                gConfig.Set("Features.AimSkinChanger", m_bAimSkinChanger);
+                Widget::ImageList(m_ClothData, fArgWrapper(playerPage.SetCloth),
+                                    [](std::string& str)
+                {
+                    std::stringstream ss(str);
+                    std::string temp;
+
+                    getline(ss, temp, '$');
+                    getline(ss, temp, '$');
+
+                    return temp;
+                }, nullptr, nullptr, nullptr, fArgNoneWrapper(playerPage.RemoveClothesTab));
             }
-            if (ImGui::BeginTabBar("AppearanceTabBar"))
+            else
             {
-                if (ImGui::BeginTabItem(TEXT("Player.ClothesTab")))
+                ImGui::TextWrapped(TEXT("Player.NeedCJSkin"));
+                ImGui::Spacing();
+
+                if (ImGui::Button(TEXT("Player.ChangeToCJ"), ImVec2(Widget::CalcSize(1))))
                 {
-                    if (pPlayer->m_nModelIndex == 0)
-                    {
-                        Widget::ImageList(m_ClothData, fArgWrapper(playerPage.SetCloth), 
-                        [](std::string& str)
-                        {
-                            std::stringstream ss(str);
-                            std::string temp;
-
-                            getline(ss, temp, '$');
-                            getline(ss, temp, '$');
-
-                            return temp;
-                        });
-                    }
-                    else
-                    {
-                        ImGui::TextWrapped(TEXT("Player.NeedCJSkin"));
-                        ImGui::Spacing();
-
-                        if (ImGui::Button(TEXT("Player.ChangeToCJ"), ImVec2(Widget::CalcSize(1))))
-                        {
-                            pPlayer->SetModelIndex(0);
-                            Util::ClearCharTasksCarCheck(pPlayer);
-                        }
-                    }
-                    ImGui::EndTabItem();
+                    pPlayer->SetModelIndex(0);
+                    Util::ClearCharTasksCarCheck(pPlayer);
                 }
-                if (pPlayer->m_nModelIndex == 0
-                && ImGui::BeginTabItem(TEXT("Player.RemoveClothesTab")))
-                {
-                    ImGui::TextWrapped(TEXT("Player.ClothesTip"));
-                    ImGui::Spacing();
-
-                    ImGui::BeginChild("ClothesRemove");
-                    if (ImGui::Button(TEXT("Player.RemoveAll"), ImVec2(Widget::CalcSize(2))))
-                    {
-                        CPlayerPed* player = FindPlayerPed();
-                        for (uint i = 0; i < 18; i++)
-                        {
-                            player->m_pPlayerData->m_pPedClothesDesc->SetTextureAndModel(0u, 0u, i);
-                        }
-                        CClothes::RebuildPlayer(player, false);
-                    }
-                    ImGui::SameLine();
-                    size_t count = 0;
-                    for (auto [k, v] : m_ClothData.m_pData->Items())
-                    {
-                        if (ImGui::Button(std::string(k.str()).c_str(), ImVec2(Widget::CalcSize(2))))
-                        {
-                            CPlayerPed* player = FindPlayerPed();
-                            player->m_pPlayerData->m_pPedClothesDesc->SetTextureAndModel(0u, 0u, std::stoi(v.value_or<std::string>("0")));
-                            CClothes::RebuildPlayer(player, false);
-                        }
-
-                        if (count % 2 != 0)
-                        {
-                            ImGui::SameLine();
-                        }
-                        ++count;
-                    }
-
-                    ImGui::EndChild();
-                    ImGui::EndTabItem();
-                }
-                if (ImGui::BeginTabItem(TEXT("Player.PedSkinsTab")))
-                {
-                    Widget::ImageList(pedPage.m_PedData, fArgWrapper(playerPage.SetModel),
-                    [](std::string& str)
-                    {
-                        return pedPage.m_PedData.m_pData->Get(str.c_str(), "Unknown");
-                    });
-                    ImGui::EndTabItem();
-                }
-                if (ImGui::BeginTabItem(TEXT("Player.CustomSkinsTab")))
-                {
-                    ImGui::Spacing();
-                    CustomSkins.Draw();
-                    ImGui::EndTabItem();
-                }
-                ImGui::EndTabBar();
             }
             ImGui::EndTabItem();
         }
+        if (ImGui::BeginTabItem(TEXT( "Player.PedSkinsTab")))
+        {
+            Widget::ImageList(pedPage.m_PedData, fArgWrapper(playerPage.SetModel),
+                                [](std::string& str)
+            {
+                return pedPage.m_PedData.m_pData->Get(str.c_str(), "Unknown");
+            });
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem(TEXT( "Player.CustomSkinsTab")))
+        {
+            ImGui::BeginChild("AAA");
+            ImGui::Spacing();
+            CustomSkins.Draw();
+            ImGui::EndChild();
+            ImGui::EndTabItem();
+        }
 #else
-        if (ImGui::BeginTabItem(TEXT("Player.SkinsTab")))
+        if (ImGui::BeginTabItem(TEXT( "Player.SkinsTab")))
         {
             ImGui::Spacing();
 #ifdef GTA3

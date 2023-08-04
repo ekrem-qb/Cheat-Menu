@@ -5,6 +5,8 @@
 #include "imgui/imgui_impl_dx9.h"
 #include "imgui/imgui_impl_dx11.h"
 #include "imgui/imgui_impl_win32.h"
+#include "../include/fonts/text.hpp"
+#include "../include/fonts/title.hpp"
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
@@ -42,33 +44,27 @@ HRESULT D3dHook::hkReset(IDirect3DDevice9* pDevice, D3DPRESENT_PARAMETERS* pPres
 
 void D3dHook::ProcessFrame(void* ptr)
 {
-    if (!ImGui::GetCurrentContext())
-    {
-        ImGui::CreateContext();
-    }
-
     ImGuiIO& io = ImGui::GetIO();
     static bool init;
     if (init)
     {
         ProcessMouse();
+        ImGui_ImplWin32_NewFrame();
+        if (gRenderer == eRenderer::DirectX9)
+        {
+            ImGui_ImplDX9_NewFrame();
+        }
+        else
+        {
+            ImGui_ImplDX11_NewFrame();
+        }
 
         // Scale the menu if game resolution changed
         static ImVec2 fScreenSize = ImVec2(-1, -1);
         ImVec2 size(screen::GetScreenWidth(), screen::GetScreenHeight());
         if (fScreenSize.x != size.x && fScreenSize.y != size.y)
         {
-            FontMgr::ReloadAll();
-
-            if (gRenderer == eRenderer::DirectX9)
-            {
-                ImGui_ImplDX9_InvalidateDeviceObjects();
-            }
-            else
-            {
-                ImGui_ImplDX11_InvalidateDeviceObjects();
-            }
-
+            FontMgr::SetFontReloadRequired(true);
             ImGuiStyle* style = &ImGui::GetStyle();
             float scaleX = size.x / 1366.0f;
             float scaleY = size.y / 768.0f;
@@ -80,16 +76,6 @@ void D3dHook::ProcessFrame(void* ptr)
             style->ItemInnerSpacing = ImVec2(5 * scaleX, 5 * scaleY);
 
             fScreenSize = size;
-        }
-
-        ImGui_ImplWin32_NewFrame();
-        if (gRenderer == eRenderer::DirectX9)
-        {
-            ImGui_ImplDX9_NewFrame();
-        }
-        else
-        {
-            ImGui_ImplDX11_NewFrame();
         }
 
         ImGui::NewFrame();
@@ -111,18 +97,18 @@ void D3dHook::ProcessFrame(void* ptr)
             ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
         }
 
-        if (FontMgr::IsFontReloadRequired())
-        {
-            FontMgr::ReloadAll();
-            if (gRenderer == eRenderer::DirectX9)
-            {
-                ImGui_ImplDX9_InvalidateDeviceObjects();
-            }
-            else
-            {
-                ImGui_ImplDX11_InvalidateDeviceObjects();
-            }
-        }
+        // if (FontMgr::IsFontReloadRequired())
+        // {
+        //     if (gRenderer == eRenderer::DirectX9)
+        //     {
+        //         ImGui_ImplDX9_InvalidateDeviceObjects();
+        //     }
+        //     else
+        //     {
+        //         ImGui_ImplDX11_InvalidateDeviceObjects();
+        //     }
+        //     FontMgr::ReloadAll();
+        // }
     }
     else
     {
@@ -150,8 +136,8 @@ void D3dHook::ProcessFrame(void* ptr)
         ImGui_ImplWin32_EnableDpiAwareness();
 
         // Loading fonts
-        io.FontDefault = FontMgr::Load("text", MENU_DATA_PATH("fonts/text.ttf"), 1.15f);
-        FontMgr::Load("title", MENU_DATA_PATH("fonts/title.ttf"), 2.0f);
+        io.FontDefault = FontMgr::LoadFont("text", textFont, textFontSize, 1.4f);
+        FontMgr::LoadFont("title", titleFont, titleFontSize, 2.0f);
 
         io.IniFilename = nullptr;
         io.LogFilename = nullptr;
@@ -271,7 +257,10 @@ bool D3dHook::Init(std::function<void()> pCallback)
         return false;
     }
 
-    ImGui::CreateContext();
+    if (!ImGui::GetCurrentContext())
+    {
+        ImGui::CreateContext();
+    }
 
     /*
         Must check for d3d9 first!

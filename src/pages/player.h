@@ -7,7 +7,7 @@ class PlayerPage : public IPage<PlayerPage>
 private:
     bool m_bGodMode;
     bool m_bPlayerRegen;
-    struct 
+    struct
     {
         bool m_bEnabled = false;
         CVector m_fPos;
@@ -26,6 +26,7 @@ private:
     ResourceStore m_ClothData { "clothes", eResourceType::TYPE_TEXT_IMAGE, ImVec2(70, 100)};
 
     void SetCloth(str& id);
+    void RemoveClothesTab();
     void SetModel(str& id);
 #else
     ResourceStore skinData { BY_GAME(NULL, "skins", "peds"), eResourceType::TYPE_TEXT };

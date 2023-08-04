@@ -136,7 +136,7 @@ Build = "Build"
 CheckUpdate = "Buscar actualización"
 Commands = "Comandos"
 Config = "Configuración"
-CopyrightDisclaimer = "Copyright Grinch_ 2019-2022. Todos los derechos reservados."
+CopyrightDisclaimer = "Copyright Grinch_ 2019-2023. Todos los derechos reservados."
 Credits = "Creditos"
 DiscordServer = "Server de Discord"
 FixVehKey = "Arreglar vehiculo actual"
@@ -266,7 +266,7 @@ Pasos para activar 'Skins personalizadas',
 
 1. Descarga e instala modloader
 
-2. Crea una carpeta dentro de la carpeta 'modloader' con el nombre 'CustomSkins'
+2. Crea una carpeta dentro de la carpeta 'modloader' con el nombre 'CustomSkinsLoader'
 
 3. Descarga skins de peds online (archivos .dff y .txd) y ponlos adentro de la carpeta.
 
@@ -414,7 +414,7 @@ FixCar = "Arreglar vehiculo"
 FlipCar = "Voltear vehiculo"
 FloatOnHit = "Se aleja flotando cuando es golpeado"
 ForceLevel = "Forzar nivel"
-ForCurVeh = "Para el vehiculo actual,"
+ForCurVeh = "Para el vehiculo actual"
 FourWheelDrive = "Tracción 4x4"
 FrontLights = "Luces frontales"
 FrontWheelDrive = "Tracción delantera"

@@ -41,7 +41,7 @@ static void RealTimeClock()
 GamePage& gamePage = GamePage::Get();
 
 GamePage::GamePage()
- : IPage<GamePage>(ePageID::Game, "Window.GamePage", true)
+    : IPage<GamePage>(ePageID::Game, "Game", true)
 {
 #ifdef GTASA
 
@@ -49,12 +49,12 @@ GamePage::GamePage()
     {
         if (bSaveGameFlag)
         {
-            FrontEndMenuManager.m_nCurrentMenuPage = MENUPAGE_GAME_SAVE;
+            FrontEndMenuManager.m_nCurrentMenuPage = MENUPAGE_CHOOSE_SAVE_SLOT;
             bSaveGameFlag = false;
         }
     };
 #endif
-
+    
     Events::processScriptsEvent += [this]
     {
         uint timer = CTimer::m_snTimeInMilliseconds;
@@ -81,6 +81,7 @@ GamePage::GamePage()
         {
             if (quickSceenShot.Pressed())
             {
+                injector::WriteMemory<BYTE>(0xBA6830, 1, true);
                 Command<Commands::TAKE_PHOTO>();
                 Util::SetMessage(TEXT("Game.ScreenshotTaken"));
             }
@@ -181,7 +182,7 @@ void GamePage::Draw()
 #ifdef GTASA
     if (ImGui::Button(TEXT("Game.SaveGame"), Widget::CalcSize()))
     {
-        FrontEndMenuManager.m_bActivateMenuNextFrame = true;
+        FrontEndMenuManager.m_bStartUpFrontEndRequested = true;
         bSaveGameFlag = true;
     }
     ImGui::Spacing();
@@ -189,12 +190,12 @@ void GamePage::Draw()
 
     if (ImGui::BeginTabBar("Game", ImGuiTabBarFlags_NoTooltip + ImGuiTabBarFlags_FittingPolicyScroll))
     {
-        if (ImGui::BeginTabItem(TEXT("Window.CheckboxTab")))
+        if (ImGui::BeginTabItem(TEXT( "Window.ToggleTab")))
         {
             ImGui::BeginChild("##Checkbox");
             ImGui::Spacing();
             ImGui::Columns(2, nullptr, false);
-            if (ImGui::Checkbox(TEXT("Game.DisableCheats"), &m_bDisableCheats))
+            if (Widget::Toggle(TEXT("Game.DisableCheats"), &m_bDisableCheats))
             {
                 if (m_bDisableCheats)
                 {
@@ -225,7 +226,7 @@ void GamePage::Draw()
 #endif
                 }
             }
-            if (ImGui::Checkbox(TEXT("Game.DisableReplay"), &m_bDisableReplay))
+            if (Widget::Toggle(TEXT("Game.DisableReplay"), &m_bDisableReplay))
             {
                 if (m_bDisableReplay)
                 {
@@ -233,26 +234,26 @@ void GamePage::Draw()
                 }
                 else
                 {
-                    patch::SetUChar(BY_GAME(0x460500, 0x624EC0, 0x593170), 0x80);
+                    patch::SetUChar(BY_GAME(0x460500, 0x624EC0, 0x593170), BY_GAME(0xA0, 0x80, 0x80));
                 }
             }
 
-            Widget::CheckboxAddr(TEXT("Game.FasterClock"), BY_GAME(0x96913B, 0xA10B87, 0x95CDBB));
+            Widget::ToggleAddr<int8_t>(TEXT("Game.FasterClock"), BY_GAME(0x96913B, 0xA10B87, 0x95CDBB));
 #ifdef GTASA
-            if (Widget::Checkbox(TEXT("Game.ForbiddenWantedLevel"), &m_bForbiddenArea, TEXT("Game.ForbiddenWantedLevelText")))
+            if (Widget::Toggle(TEXT("Game.ForbiddenWantedLevel"), &m_bForbiddenArea, TEXT("Game.ForbiddenWantedLevelText")))
             {
                 patch::Set<BYTE>(0x441770, m_bForbiddenArea ? 0x83 : 0xC3);
             }
-            Widget::CheckboxAddr(TEXT("Game.FreePNS"), 0x96C009);
+            Widget::ToggleAddr<int8_t>(TEXT("Game.FreePNS"), 0x96C009);
 #endif
 
 #ifdef GTAVC
             ImGui::NextColumn();
 #endif
 #ifdef GTASA
-            Widget::CheckboxAddr(TEXT("Game.FreezeGame"), 0xA10B48);
+            Widget::ToggleAddr<int8_t>(TEXT("Game.FreezeGame"), 0xA10B48);
 #endif
-            if (ImGui::Checkbox(TEXT("Game.FreezeGameTime"), &m_bFreezeTime))
+            if (Widget::Toggle(TEXT("Game.FreezeGameTime"), &m_bFreezeTime))
             {
                 if (m_bFreezeTime)
                 {
@@ -267,11 +268,11 @@ void GamePage::Draw()
 #ifdef GTASA
             ImGui::NextColumn();
 #endif
-            if (ImGui::Checkbox("Freeze misson timer", &m_bMissionTimer))
+            if (Widget::Toggle("Freeze misson timer", &m_bMissionTimer))
             {
                 Command<Commands::FREEZE_ONSCREEN_TIMER>(m_bMissionTimer);
             }
-            if (Widget::Checkbox(TEXT("Game.HardMode"), &m_HardMode.m_bEnabled, TEXT("Game.HardModeText")))
+            if (Widget::Toggle(TEXT("Game.HardMode"), &m_HardMode.m_bEnabled, TEXT("Game.HardModeText")))
             {
                 CPlayerPed* player = FindPlayerPed();
 
@@ -300,7 +301,7 @@ void GamePage::Draw()
                 }
             }
 #ifdef GTASA
-            if (Widget::Checkbox(TEXT("Game.MobileRadio"), &m_bMobileRadio))
+            if (Widget::Toggle(TEXT("Game.MobileRadio"), &m_bMobileRadio))
             {
                 // AERadioTrackManager.StartRadio(5, 0, 0, 0);
                 CallMethodAndReturn<int, 0x4EB3C0, int, int, int, int, int>((int)&AERadioTrackManager, 5, 0, 0, 0);
@@ -339,7 +340,7 @@ void GamePage::Draw()
                 //     Call<0x4E9820, int, int, int>((int)&AERadioTrackManager, 0, 0);
                 // }
             }
-            if (Widget::Checkbox(TEXT("Game.NoWaterPhysics"), &m_bNoWaterPhysics))
+            if (Widget::Toggle(TEXT("Game.NoWaterPhysics"), &m_bNoWaterPhysics))
             {
                 if (m_bNoWaterPhysics)
                 {
@@ -350,12 +351,12 @@ void GamePage::Draw()
                     patch::Set<uint8_t>(0x6C2759, 0, true);
                 }
             }
-            Widget::Checkbox(TEXT("Game.Screenshot"), &m_bScreenShot,
-                                std::format("{} {}", TEXT("Game.ScreenshotTip"),
-                                quickSceenShot.GetNameString()).c_str());
-            Widget::Checkbox(TEXT("Game.SolidWater"), &m_bSolidWater, TEXT("Game.SolidWaterText"));
+            Widget::Toggle(TEXT("Game.Screenshot"), &m_bScreenShot,
+                             std::format("{} {}", TEXT("Game.ScreenshotTip"),
+                                         quickSceenShot.GetNameString()).c_str());
+            Widget::Toggle(TEXT("Game.SolidWater"), &m_bSolidWater, TEXT("Game.SolidWaterText"));
 #endif
-            if (ImGui::Checkbox(TEXT("Game.SyncSystemTime"), &m_bSyncTime))
+            if (Widget::Toggle(TEXT("Game.SyncSystemTime"), &m_bSyncTime))
             {
                 if (m_bSyncTime)
                 {
@@ -371,12 +372,12 @@ void GamePage::Draw()
             ImGui::EndChild();
             ImGui::EndTabItem();
         }
-        if (ImGui::BeginTabItem(TEXT("Window.MenusTab")))
+        if (ImGui::BeginTabItem(TEXT( "Window.MenusTab")))
         {
             ImGui::Spacing();
             ImGui::BeginChild("##Menus");
 #ifdef GTASA
-            if (ImGui::CollapsingHeader(TEXT("Game.CameraZoom")))
+            if (ImGui::CollapsingHeader((TEXT_S("Game.CameraZoom") + "##HEADER").c_str()))
             {
                 ImGui::Spacing();
                 if (Freecam.GetState())
@@ -385,7 +386,7 @@ void GamePage::Draw()
                 }
                 else
                 {
-                    if (Widget::Checkbox(TEXT("Game.CameraZoomLock"), &m_bLockCameraZoom))
+                    if (Widget::Toggle(TEXT("Game.CameraZoomLock"), &m_bLockCameraZoom))
                     {
                         if (!m_bLockCameraZoom)
                         {
@@ -494,7 +495,7 @@ void GamePage::Draw()
             if (ImGui::CollapsingHeader(TEXT("Player.TopDownCamera")))
             {
                 bool state = TopDownCam.GetState();
-                if (ImGui::Checkbox(TEXT("Window.Enabled"), &state))
+                if (Widget::Toggle(TEXT("Window.Enabled"), &state))
                 {
                     Command<Commands::RESTORE_CAMERA_JUMPCUT>();
                     TopDownCam.Toggle();
@@ -604,11 +605,11 @@ void GamePage::Draw()
             ImGui::EndTabItem();
         }
 #ifdef GTASA
-        if (ImGui::BeginTabItem(TEXT("Game.Freecam")))
+        if (ImGui::BeginTabItem(TEXT( "Game.Freecam")))
         {
             ImGui::Spacing();
             bool state = Freecam.GetState();
-            if (Widget::Checkbox(TEXT("Game.Enable"), &state))
+            if (Widget::Toggle(TEXT("Game.Enable"), &state))
             {
                 if (Freecam.Toggle())
                 {
@@ -735,7 +736,7 @@ void GamePage::Draw()
             ImGui::EndTabItem();
         }
 #endif
-        if (ImGui::BeginTabItem(TEXT("Game.Missions")))
+        if (ImGui::BeginTabItem(TEXT( "Game.Missions")))
         {
             ImGui::Spacing();
 
@@ -766,7 +767,7 @@ void GamePage::Draw()
             ImGui::EndTabItem();
         }
 #ifdef GTASA
-        if (ImGui::BeginTabItem(TEXT("Game.Stats")))
+        if (ImGui::BeginTabItem(TEXT( "Game.Stats")))
         {
             ImGui::Spacing();
 
@@ -774,6 +775,7 @@ void GamePage::Draw()
             {
                 for (size_t i = 69; i != 80; ++i)
                 {
+                    gConfig.Set(std::format("Stats.{}", i).c_str(), 1000);
                     CStats::SetStatValue((unsigned short)i, 1000);
                 }
                 CHud::GetRidOfAllHudMessages(true);
@@ -783,9 +785,13 @@ void GamePage::Draw()
             if (ImGui::Button(TEXT("Game.MaxVehSkills"), Widget::CalcSize(2)))
             {
                 CStats::SetStatValue(160, 1000);
+                gConfig.Set("Stats.160", 1000);
                 CStats::SetStatValue(223, 1000);
+                gConfig.Set("Stats.223", 1000);
                 CStats::SetStatValue(229, 1000);
+                gConfig.Set("Stats.229", 1000);
                 CStats::SetStatValue(230, 1000);
+                gConfig.Set("Stats.230", 1000);
                 CHud::GetRidOfAllHudMessages(true);
                 Util::SetMessage(TEXT("Game.MaxVehSkillsText"));
             }
@@ -794,18 +800,18 @@ void GamePage::Draw()
             Widget::DataList(m_StatData, nullptr, nullptr, true);
             ImGui::EndTabItem();
         }
-        if (ImGui::BeginTabItem(TEXT("Game.RandomCheats")))
+        if (ImGui::BeginTabItem(TEXT( "Game.RandomCheats")))
         {
             ImGui::Spacing();
             ImGui::Columns(2, NULL, false);
 
             bool state = RandomCheats.GetState();
-            if (ImGui::Checkbox(TEXT("Game.Enable"), &state))
+            if (Widget::Toggle(TEXT("Game.Enable"), &state))
             {
                 RandomCheats.Toggle();
             }
             ImGui::NextColumn();
-            ImGui::Checkbox(TEXT("Game.ProgressBar"), &RandomCheats.m_bProgressBar);
+            Widget::Toggle(TEXT("Game.ProgressBar"), &RandomCheats.m_bProgressBar);
             ImGui::Columns(1);
             ImGui::Spacing();
 

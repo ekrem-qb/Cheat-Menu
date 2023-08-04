@@ -211,7 +211,7 @@ void AnimationMgr::AddNew()
 {
     static char animBuf[INPUT_BUFFER_SIZE];
     static char ifpBuf[INPUT_BUFFER_SIZE];
-    
+
     ImGui::InputTextWithHint(TEXT("Scene.IFPName"), "ped", ifpBuf, INPUT_BUFFER_SIZE);
     ImGui::InputTextWithHint(TEXT("Scene.AnimName"), "cower", animBuf, INPUT_BUFFER_SIZE);
     ImGui::Spacing();
@@ -220,7 +220,7 @@ void AnimationMgr::AddNew()
         std::string key = std::string("Custom.") + animBuf;
         m_Data.m_pData->Set(key.c_str(), std::string(ifpBuf));
         m_Data.m_pData->Save();
-        Util::SetMessage("Window.AddEntryMSG");
+        Util::SetMessage(TEXT("Window.AddEntryMSG"));
     }
 }
 

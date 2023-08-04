@@ -20,7 +20,7 @@ void ScenePage::Draw()
         CPlayerPed* pPlayer = FindPlayerPed();
         int hPlayer = CPools::GetPedRef(pPlayer);
 
-        if (ImGui::BeginTabItem(TEXT("Scene.AnimationTab")))
+        if (ImGui::BeginTabItem(TEXT( "Scene.AnimationTab")))
         {
             ImGui::Spacing();
             if (ImGui::Button(TEXT("Scene.StopAnimation"), Widget::CalcSize()))
@@ -29,12 +29,13 @@ void ScenePage::Draw()
             }
             ImGui::Spacing();
 
-            ImGui::Columns(2, nullptr, false);
-            Widget::Checkbox(TEXT("Scene.LoopCheckbox"), &Animation.m_Loop, TEXT("Scene.LoopCheckboxText"));
-            Widget::Checkbox(TEXT("Scene.SecondaryCheckbox"), &Animation.m_bSecondary, TEXT("Scene.SecondaryCheckboxText"));
+            ImGui::Columns(BY_GAME(3, 2, 2), nullptr, false);
+            Widget::Toggle(TEXT("Scene.LoopCheckbox"), &Animation.m_Loop, TEXT("Scene.LoopCheckboxText"));
             ImGui::NextColumn();
+            Widget::Toggle(TEXT("Scene.SecondaryCheckbox"), &Animation.m_bSecondary, TEXT("Scene.SecondaryCheckboxText"));
 #ifdef GTASA
-            Widget::Checkbox(TEXT("Scene.PedAnim"), &Animation.m_bPedAnim, TEXT("Scene.PedAnimText"));
+            ImGui::NextColumn();
+            Widget::Toggle(TEXT("Scene.PedAnim"), &Animation.m_bPedAnim, TEXT("Scene.PedAnimText"));
 #endif
             ImGui::Columns(1);
             ImGui::Spacing();
@@ -57,13 +58,13 @@ void ScenePage::Draw()
             ImGui::EndTabItem();
         }
 #ifdef GTASA
-        if (ImGui::BeginTabItem(TEXT("Scene.Tasks")))
+        if (ImGui::BeginTabItem(TEXT( "Scene.Tasks")))
         {
             ImGui::Spacing();
-            Widget::Checkbox(TEXT("Menu.ShowPedTasks"), &Overlay::m_bPedTasks);
+            Widget::Toggle(TEXT("Menu.ShowPedTasks"), &Overlay::m_bPedTasks);
             ImGui::Spacing();
             if (pPlayer)
-            {   
+            {
                 ImGui::BeginChild("TasksList");
                 ImGui::Text(TEXT("Scene.PrimaryTasks"));
                 ImGui::Separator();
@@ -102,7 +103,7 @@ void ScenePage::Draw()
             }
             ImGui::EndTabItem();
         }
-        if (ImGui::BeginTabItem(TEXT("Scene.CutsceneTab")))
+        if (ImGui::BeginTabItem(TEXT( "Scene.CutsceneTab")))
         {
             ImGui::Spacing();
             if (ImGui::Button(TEXT("Scene.StopCutscene"), Widget::CalcSize()))
@@ -119,7 +120,7 @@ void ScenePage::Draw()
             }
             ImGui::EndTabItem();
         }
-        if (ImGui::BeginTabItem(TEXT("Scene.ParticleTab")))
+        if (ImGui::BeginTabItem(TEXT( "Scene.ParticleTab")))
         {
             ImGui::Spacing();
             if (ImGui::Button(TEXT("Scene.RemoveAll"), Widget::CalcSize(2)))
@@ -132,7 +133,7 @@ void ScenePage::Draw()
                 Particle.RemoveLatest();
             }
             ImGui::Spacing();
-            if (Widget::CheckboxBits(TEXT("Scene.InvisiblePlayer"), pPlayer->m_nPedFlags.bDontRender))
+            if (Widget::ToggleBits(TEXT("Scene.InvisiblePlayer"), pPlayer->m_nPedFlags.bDontRender))
             {
                 pPlayer->m_nPedFlags.bDontRender = (pPlayer->m_nPedFlags.bDontRender == 1) ? 0 : 1;
             }
@@ -146,7 +147,7 @@ void ScenePage::Draw()
             }
             ImGui::EndTabItem();
         }
-        if (ImGui::BeginTabItem(TEXT("Scene.Styles")))
+        if (ImGui::BeginTabItem(TEXT( "Scene.Styles")))
         {
             ImGui::Spacing();
 

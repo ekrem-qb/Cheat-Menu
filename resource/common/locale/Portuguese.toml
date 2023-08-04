@@ -141,7 +141,7 @@ Build = "Build"
 CheckUpdate = "Verificar atualizações"
 Commands = "Comandos"
 Config = "Configuração"
-CopyrightDisclaimer = "Copyright Grinch_ 2019-2022. Todos os direitos reservados."
+CopyrightDisclaimer = "Copyright Grinch_ 2019-2023. Todos os direitos reservados."
 Credits = "Créditos"
 DiscordRPC = "Status personalizado Discord (rich presence)"
 DiscordServer = "Servidor do Discord"
@@ -273,7 +273,7 @@ Etapas para ativar 'Skins personalizadas',
 
 1. Baixe & instale o modloader
 
-2. Crie uma pasta dentro da pasta 'modloader' com o nome 'CustomSkins'
+2. Crie uma pasta dentro da pasta 'modloader' com o nome 'CustomSkinsLoader'
 
 3. Baixe skins online (arquivos .dff & .txd) e coloque-os dentro.
 
@@ -433,7 +433,7 @@ FixCar = "Consertar veículo"
 FlipCar = "Virar veículo"
 FloatOnHit = "Flutuar quando atingido"
 ForceLevel = "Nível de força"
-ForCurVeh = "Para veículo atual,"
+ForCurVeh = "Para veículo atual"
 FourWheelDrive = "Tração nas quatro rodas"
 FrontLights = "Luzes dianteiras"
 FrontWheelDrive = "Tração dianteira"
